@@ -130,6 +130,7 @@ export const ANNOTATION_VERIFICATION_CODES = [
  */
 export const JOIN_CODES = [
     "MISSING_CHANNEL",
+    // figma-mcp-server 定制：CHANNEL_NOT_FOUND 为死码——socket 层拒连已改用 PLUGIN_PEER_UNAVAILABLE，全仓库无产生点，保留定义仅作 ratified 契约存档
     "CHANNEL_NOT_FOUND",
     "CHANNEL_JOIN_FAILED",
     "PLUGIN_DISCONNECTED",

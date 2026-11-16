@@ -294,6 +294,7 @@ export async function setTextStyle(params: any) {
     if (textAlignVertical !== undefined) node.textAlignVertical = textAlignVertical;
 
     return {
+        success: true,
         id: node.id,
         name: node.name,
         type: node.type,

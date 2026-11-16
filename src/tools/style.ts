@@ -294,7 +294,8 @@ const styleProperties = z.object({
         .describe("TEXT: {value, unit:'PIXELS'|'PERCENT'}"),
     paragraphIndent: z.number().optional().describe("TEXT: first-line indent, px"),
     paragraphSpacing: z.number().optional().describe("TEXT: space between paragraphs, px"),
-    textCase: z.enum(["ORIGINAL", "UPPER", "LOWER", "TITLE"]).optional().describe("TEXT: letter casing"),
+    // figma-mcp-server 定制：与 text_set_style 对齐，Figma 接受 6 值
+    textCase: z.enum(["ORIGINAL", "UPPER", "LOWER", "TITLE", "SMALL_CAPS", "SMALL_CAPS_FORCED"]).optional().describe("TEXT: letter casing"),
     textDecoration: z.enum(["NONE", "UNDERLINE", "STRIKETHROUGH"]).optional().describe("TEXT: decoration"),
     // PAINT / EFFECT / GRID
     paints: z.array(paint).optional()
@@ -383,7 +384,8 @@ export function registerStyleTools(server: McpServer) {
                     .string()
                     .optional()
                     .describe("REQUIRED for UPDATE when styleId is supplied — the style's **current exact** name, passed back verbatim from `style_list`"),
-                bindVariables: z.record(z.string(), z.string().nullable()).optional().describe("Map of field names to variable IDs (to bind) or null (to unbind). For PAINT styles, valid fields include 'color'. For TEXT styles, fields include 'fontSize', 'fontFamily', etc."),
+                // figma-mcp-server 定制：PAINT 只绑 paints[0]；非 PAINT/TEXT 可能抛原始 Figma 错误
+                bindVariables: z.record(z.string(), z.string().nullable()).optional().describe("Map of field names to variable IDs (to bind) or null (to unbind). For PAINT styles, valid fields include 'color'. For TEXT styles, fields include 'fontSize', 'fontFamily', etc. PAINT styles: only paints[0] is bound; remaining paints silently skipped. Non-PAINT/TEXT binding may throw a raw Figma error."),
             }).superRefine((data, ctx) => {
                 // Empty names are rejected, never assigned: a style named ""
                 // could not pass exact-name verification afterward (P4-6).
@@ -456,7 +458,6 @@ export function registerStyleTools(server: McpServer) {
             }),
             annotations: {
                 destructiveHint: true,
-                idempotentHint: true,
                 openWorldHint: true
             }
         },

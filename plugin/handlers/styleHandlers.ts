@@ -125,7 +125,7 @@ export async function createStyle(params: any) {
             applied.push(`name (was "${before.name}")`);
         }
 
-        if (description) {
+        if (description !== undefined) {
             style.description = description;
             applied.push("description");
         }

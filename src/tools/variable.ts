@@ -76,12 +76,14 @@ export function registerVariableTools(server: McpServer) {
             inputSchema: z.object({
                 action: z
                     .enum(["CREATE_COLLECTION", "CREATE_VARIABLE", "UPDATE_VARIABLE", "ADD_MODE"])
-                    .describe("Action type; ADD_MODE adds a mode to an existing collection (requires collectionId + modeName, returns modeId)"),
+                    // figma-mcp-server 定制：ADD_MODE 幂等性与远端集合限制
+                    .describe("Action type; ADD_MODE adds a mode to an existing collection (requires collectionId + modeName, returns modeId), idempotent for duplicate modeName (created:false); remote collections rejected"),
                 name: z
                     .string()
                     .optional()
                     .describe("Name for collection/variable creation or variable update. Must be non-empty when supplied. It is required for CREATE_COLLECTION and CREATE_VARIABLE; omit it only on UPDATE_VARIABLE to leave the current name unchanged."),
-                description: z.string().optional().describe("Description (for UPDATE_VARIABLE)"),
+                // figma-mcp-server 定制：CREATE 不可设描述
+                description: z.string().optional().describe("Description (for UPDATE_VARIABLE); not settable on CREATE; send a follow-up UPDATE to add one"),
                 modeName: z
                     .string()
                     .optional()
@@ -115,7 +117,8 @@ export function registerVariableTools(server: McpServer) {
                         }).describe("Variable alias"),
                     ])
                     .optional()
-                    .describe("Value for the variable (or alias) (for CREATE or UPDATE)"),
+                    // figma-mcp-server 定制：UPDATE RGBA 必须带 a；CREATE 默认 a=1
+                    .describe("Value for the variable (or alias) (for CREATE or UPDATE). UPDATE with RGBA color requires a (alpha); CREATE defaults a to 1. Mismatched value/type fails at execution, variable rolled back"),
                 variableId: z
                     .string()
                     .optional()
@@ -236,6 +239,9 @@ export function registerVariableTools(server: McpServer) {
             outputSchema: looseOutput({
                 id: z.string().optional().describe("ID of the collection or variable"),
                 name: z.string().optional().describe("Name of the collection or variable"),
+                // figma-mcp-server 定制：ADD_MODE 返回 modeId 与 created
+                modeId: z.string().optional().describe("ID of the added mode (ADD_MODE only)"),
+                created: z.boolean().optional().describe("Whether the mode was created (ADD_MODE; false when the modeName already existed)"),
             }),
             annotations: {
                 openWorldHint: true
@@ -261,7 +267,8 @@ export function registerVariableTools(server: McpServer) {
                 variableNames: z
                     .array(z.string())
                     .optional()
-                    .describe("Array of variable names corresponding to variableIds, for safety verification. Required if variableIds is used."),
+                    // figma-mcp-server 定制：与 variableIds 平行等长
+                    .describe("Array of variable names corresponding to variableIds, for safety verification. Required if variableIds is used. Parallel array, same length as variableIds; non-empty."),
                 collectionId: z
                     .string()
                     .optional()
@@ -272,12 +279,13 @@ export function registerVariableTools(server: McpServer) {
                     .describe("Name of the collection to delete, for safety verification. Required if collectionId is used."),
             }),
             outputSchema: looseOutput({
+                // figma-mcp-server 定制：handler 返回 deleted/deletedCollection，无 message
                 success: z.boolean().optional().describe("Whether variables were deleted successfully"),
-                message: z.string().optional().describe("Status message"),
+                deleted: z.array(z.string()).optional().describe("IDs of the variables that were deleted"),
+                deletedCollection: z.string().optional().describe("ID of the collection that was deleted (collection mode only)"),
             }),
             annotations: {
                 destructiveHint: true,
-                idempotentHint: true,
                 openWorldHint: true
             }
         },

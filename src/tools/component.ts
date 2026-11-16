@@ -51,11 +51,14 @@ export function registerComponentTools(server: McpServer) {
                 nodeId: z.string().describe("ID of the COMPONENT or COMPONENT_SET"),
                 nodeName: z.string().describe("The node's current exact name, passed back verbatim from `node_info`."),
                 action: z.enum(["ADD", "EDIT"]).describe("Action to perform"),
-                propertyName: z.string().describe("For ADD, the required new property name, which must be non-empty. For EDIT, the existing property's exact lookup name."),
+                // figma-mcp-server 定制：统一 propertyName 措辞
+                propertyName: z.string().describe("human-readable property name (the part before '#'). For ADD, the required new property name, which must be non-empty. For EDIT, the existing property's exact lookup name."),
                 newPropertyName: z.string().min(1).optional().describe("For EDIT, the optional replacement property name. It must be non-empty when supplied; omit it to leave the existing property name unchanged."),
                 propertyType: z.enum(["BOOLEAN", "TEXT", "INSTANCE_SWAP"]).optional().describe("Required for ADD: The type of property"),
-                defaultValue: z.union([z.string(), z.boolean()]).optional().describe("Required for ADD: Default value for the property. For INSTANCE_SWAP, this must be a component node ID."),
-                newDefaultValue: z.union([z.string(), z.boolean()]).optional().describe("For the EDIT action, to change the default value. For INSTANCE_SWAP, this must be a component node ID."),
+                // figma-mcp-server 定制：也接受 library component key
+                defaultValue: z.union([z.string(), z.boolean()]).optional().describe("Required for ADD: Default value for the property. For INSTANCE_SWAP, a component node ID or a library component key."),
+                // figma-mcp-server 定制：与 defaultValue 对齐
+                newDefaultValue: z.union([z.string(), z.boolean()]).optional().describe("For the EDIT action, to change the default value. For INSTANCE_SWAP, a component node ID or a library component key."),
                 preferredValues: z
                     .array(
                         z.object({
@@ -104,7 +107,8 @@ export function registerComponentTools(server: McpServer) {
             inputSchema: z.object({
                 nodeId: z.string().describe("ID of the COMPONENT or COMPONENT_SET"),
                 nodeName: z.string().describe("The node's current exact name, passed back verbatim from `node_info`."),
-                propertyName: z.string().describe("The human-readable name of the property to delete"),
+                // figma-mcp-server 定制：统一 propertyName 措辞
+                propertyName: z.string().describe("human-readable property name (the part before '#')"),
             }),
             outputSchema: looseOutput({
                 id: z.string().optional().describe("ID of the component/component set"),
@@ -115,7 +119,6 @@ export function registerComponentTools(server: McpServer) {
             }),
             annotations: {
                 destructiveHint: true,
-                idempotentHint: true,
                 openWorldHint: true
             }
         },

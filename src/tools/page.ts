@@ -8,7 +8,8 @@ export function registerPageTools(server: McpServer) {
         "page_info",
         {
             title: "Get Pages",
-            description: "List the document's pages; no args → all pages (no children), or pass `pageIds` → those pages with their top-level children. Batch ≤25 ids/call. Inspect `coverage`: a failed page is omitted with a structured `pageErrors` row while other pages still return.",
+            // figma-mcp-server 定制：实现无批量上限，描述与实际一致
+            description: "List the document's pages; no args → all pages (no children), or pass `pageIds` → those pages with their top-level children, any number of page ids, loaded serially. Inspect `coverage`: a failed page is omitted with a structured `pageErrors` row while other pages still return.",
             inputSchema: z.object({
                 pageIds: z
                     .array(z.string())

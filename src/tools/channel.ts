@@ -45,11 +45,10 @@ type JoinRecovery = (channel: string, error: DescribedThrownError) => string;
 // Change 13 (C13-F2): a Map makes the recovery inventory own-key-only.
 // A future structured code such as `toString` must pass through as unknown,
 // never resolve an inherited Object.prototype member and invoke it as guidance.
+// figma-mcp-server 定制: CHANNEL_NOT_FOUND 条目已移除 —— 全仓库无任何产生点
+// （socket 桥拒绝统一走 CHANNEL_IN_USE / PLUGIN_PEER_UNAVAILABLE 等 D13 码），属死码；
+// 其 ratified 定义仍保留在 protocol/errorCodes.ts 的 JOIN_CODES 中。
 const JOIN_RECOVERY = new Map<string, JoinRecovery>([
-    [
-        "CHANNEL_NOT_FOUND",
-        (ch) => `Channel '${ch}' was not found. Verify the channel name and that the Figma plugin is running and connected.`,
-    ],
     [
         "CHANNEL_JOIN_FAILED",
         (ch, error) =>
@@ -222,10 +221,12 @@ export function registerChannelTools(
                     .describe("The name of the channel to join"),
             }),
             outputSchema: looseOutput({
-                status: z.enum(["success", "error"]).describe("Connection status"),
+                // figma-mcp-server 定制: status 增加 "failed" —— broker live 通道下 join 失败
+                // 由 broker 透传真实错误信封并置 status:'failed'（区别于本进程 handler 的 'error'）。
+                status: z.enum(["success", "failed", "error"]).describe("Connection status ('failed' only on the broker live path; this handler uses 'error')"),
                 channel: z.string().describe("Channel name"),
-                errorCode: z.string().optional().describe("Error code if status is error"),
-                errorMessage: z.string().optional().describe("Error message if status is error"),
+                errorCode: z.string().optional().describe("Error code if status is error or failed"),
+                errorMessage: z.string().optional().describe("Error message if status is error or failed"),
                 errorDetails: z.any().optional().describe("Structured error context if status is error and the underlying failure carried any"),
                 serverVersion: z.string().optional().describe("Self-reported MCP server build version (present on every successful join)"),
                 pluginVersion: z.string().optional().describe("Self-reported bound Figma plugin build version (present on every successful join)"),

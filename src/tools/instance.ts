@@ -14,8 +14,10 @@ export function registerInstanceTools(server: McpServer) {
             inputSchema: z.object({
                 nodeId: z.string().describe("The ID of the instance node"),
                 nodeName: z.string().describe("The instance's current exact name, passed back verbatim from `node_info`."),
-                propertyName: z.string().describe("The human-readable name of the component property to change"),
-                value: z.union([z.string(), z.boolean()]).describe("The new value for the property. For INSTANCE_SWAP properties, this must be a component key (the stable library identifier)."),
+                // figma-mcp-server 定制：统一 propertyName 措辞
+                propertyName: z.string().describe("human-readable property name (the part before '#')"),
+                // figma-mcp-server 定制：补充本地节点 ID/库 key 与 BOOLEAN 字符串形态
+                value: z.union([z.string(), z.boolean()]).describe("The new value for the property. For INSTANCE_SWAP: local component node ID or library key; BOOLEAN also accepts 'true'/'false' strings."),
             }),
             outputSchema: looseOutput({
                 success: z.boolean().optional().describe("Whether property update was successful"),
@@ -37,7 +39,8 @@ export function registerInstanceTools(server: McpServer) {
         "instance_get_overrides",
         {
             title: "Get Instance Overrides",
-            description: "Read the override properties from a source instance, to later apply them to other instances.",
+            // figma-mcp-server 定制：实际仅返回 overridesCount
+            description: "Preflight check: returns override counts only (overridesCount); the apply step re-reads the source live — only sourceInstanceId is needed",
             inputSchema: z.object({
                 nodeId: z
                     .string()

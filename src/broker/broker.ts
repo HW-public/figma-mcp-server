@@ -61,8 +61,47 @@ function ensureToken(config: Config): string {
     }
 }
 
-interface QueueEntry {
-    owner: number; // socket id，断开时清理其未执行项
+// figma-mcp-server 定制: 正式错误码（protocol/errorCodes.ts 的 RATIFIED_CODES 及 join 流程码）
+// → 中文提示。translateError 优先按 errorCode/code 精确查本表，查不到才回退全文正则，
+// 避免宽泛正则误伤（旧 /instance/i 曾把 MISSING_SOURCE_INSTANCE_ID 误译）。
+const TRANSLATE_CODE_DICT: Record<string, string> = {
+    // —— socket 桥准入（D13）——
+    PLUGIN_PEER_UNAVAILABLE: '[中文] 插件未连接：Figma 插件离线，打开插件点 Connect',
+    PLUGIN_PEER_AMBIGUOUS: '[中文] 插件实例不唯一：同名插件开了多个，只保留一个并重新 Connect',
+    CHANNEL_IN_USE: '[中文] 频道被占用：该频道码已绑定其他会话，请换一个频道码或等对方断开',
+    VERSION_MISMATCH: '[中文] 版本不匹配：插件与 MCP server 版本不一致，重跑 install.ps1 升级安装',
+    // —— MCP client 前置状态 ——
+    CHANNEL_NOT_BOUND: '[中文] 频道未绑定：Figma 插件未连接，打开插件点 Connect',
+    // —— join 流程 ——
+    MISSING_CHANNEL: '[中文] 缺少频道名：请传插件状态栏显示的 4 位频道码',
+    CHANNEL_JOIN_FAILED: '[中文] 加入频道失败：插件未在预期时间内确认，重连插件后重试',
+    PLUGIN_DISCONNECTED: '[中文] 插件已断开：可编辑范围尚未读取完成插件就断了，重新打开插件再试',
+    // —— 页面/文档操作（PAGE_LOAD_FAILED 族）——
+    PAGE_LOAD_FAILED: '[中文] 页面加载失败：请重试；持续失败则重新打开插件',
+    PAGE_SCAN_FAILED: '[中文] 页面读取失败：页面已加载但读取中断，重试或缩小读取范围',
+    PAGE_NOT_FOUND: '[中文] 页面不存在：pageId 可能已变化，重新 page_info 获取',
+    TARGET_NOT_PAGE: '[中文] 目标不是页面：该操作要求 page 级节点，请传 pageId',
+    PAGE_LOAD_TIMEOUT: '[中文] 页面加载超时：文档过大或网络慢，稍后重试',
+    DOCUMENT_SCAN_INCOMPLETE: '[中文] 文档扫描不完整：部分页面未读完，结果可能不全，重试',
+    VARIABLE_IN_USE: '[中文] 变量正在被使用：请先删除/替换所有引用该变量的节点再操作',
+    // —— D5 校验拒绝 ——
+    VARIABLE_NAME_MISSING: '[中文] 缺少变量名：先用 variable_list 读当前名称，原样传回',
+    VARIABLE_NAME_MISMATCH: '[中文] 变量名不匹配：先用 variable_list 读当前名称，原样传回',
+    COLLECTION_NAME_MISSING: '[中文] 缺少集合名：先用 variable_list 读当前集合名，原样传回',
+    COLLECTION_NAME_MISMATCH: '[中文] 集合名不匹配：先用 variable_list 读当前集合名，原样传回',
+    STYLE_NAME_MISSING: '[中文] 缺少样式名：先用 style_list 读当前样式名，原样传回',
+    STYLE_NAME_MISMATCH: '[中文] 样式名不匹配：先用 style_list 读当前样式名，原样传回',
+    VARIABLE_SCOPES_MISSING: '[中文] 缺少变量作用域：请从 variable_list 读取 scopes 原样传回',
+    // —— D6 父级校验 ——
+    PARENT_NAME_MISSING: '[中文] 缺少父级名称：先用 node_info 读父级当前名称，原样传回',
+    PARENT_NAME_MISMATCH: '[中文] 父级名称不匹配：先用 node_info 读父级当前名称，原样传回',
+    // —— 注释/范围/实例 ——
+    ANNOTATION_CATEGORY_NOT_FOUND: '[中文] 注释分类不存在：annotation_list 读取有效分类 id 后重试',
+    SCOPE_INVALID: '[中文] 可编辑范围无效：请在插件里重新设置 Link to Selection 范围',
+    MISSING_SOURCE_INSTANCE_ID: '[中文] 缺少源组件实例 ID：请先 instance_get_overrides 读取当前实例 id，原样传回',
+};
+
+interface QueueEntry {    owner: number; // socket id，断开时清理其未执行项
     run: () => Promise<unknown>;
     resolve: (v: unknown) => void;
     reject: (e: Error) => void;
@@ -193,20 +232,42 @@ class Broker {
     }
 
     private lastJoinPayload: unknown = null;
+    // figma-mcp-server 定制: 记录最近一次 join 失败的真实错误信封（子进程 structuredContent 里的
+    // errorCode/errorMessage）。失败时由 execTool 透传给客户端，不再把子进程错误吞掉、
+    // 也不再拿上次成功的旧 pages/node 数据冒充失败结果。
+    private lastJoinError: { errorCode?: string; errorMessage?: string } | null = null;
+
+    /** 从子进程 channel_join 结果中提取失败信封：子进程把失败写在 structuredContent.status='error'
+     *  （isError 恒为 false，toolResult 从不置位），只认 isError 会把失败误判为成功 */
+    private extractJoinFailure(result: unknown): { errorCode?: string; errorMessage?: string } | null {
+        const env = (result as { structuredContent?: Record<string, unknown> } | null)?.structuredContent;
+        if (env && env.status === 'error') {
+            return {
+                errorCode: typeof env.errorCode === 'string' ? env.errorCode : undefined,
+                errorMessage: typeof env.errorMessage === 'string' ? env.errorMessage : undefined,
+            };
+        }
+        return null;
+    }
 
     private async joinChannel(channel: string): Promise<boolean> {
         if (!this.mcpClient) return false;
+        this.lastJoinError = null;
         try {
             const result = await this.mcpClient.callTool({ name: 'channel_join', arguments: { channel } });
-            if (!(result as { isError?: boolean }).isError) {
+            const failure = this.extractJoinFailure(result);
+            if (!(result as { isError?: boolean }).isError && !failure) {
                 this.lastJoinPayload = result;
                 this.currentChannel = channel;
                 persistChannel(this.config.channelFile, channel);
                 log(this.config, `频道 '${channel}' 已加入`);
                 return true;
             }
-            log(this.config, `频道 '${channel}' 加入失败`);
+            // figma-mcp-server 定制: 透传子进程返回的 error 信封（code/message），不再吞掉错误详情
+            this.lastJoinError = failure ?? { errorMessage: 'channel_join 返回失败但未携带错误详情' };
+            log(this.config, `频道 '${channel}' 加入失败: ${JSON.stringify(this.lastJoinError)}`);
         } catch (e) {
+            this.lastJoinError = { errorMessage: (e as Error).message };
             log(this.config, `join 异常: ${(e as Error).message}`);
         }
         return false;
@@ -297,18 +358,29 @@ class Broker {
 
     /** 常见英文错误 → 中文提示（在原文前附加，不替换以保留排障信息） */
     private translateError(msg: string): string {
+        if (msg.includes('[中文]')) return msg;
+        // figma-mcp-server 定制: 优先解析错误对象/消息中的 errorCode/code 字段，按正式错误码
+        // （protocol/errorCodes.ts 的 RATIFIED_CODES 等）精确查表给中文；查不到再回退全文正则兜底。
+        // 旧版仅靠 8 条宽泛正则：/instance/i 会把 MISSING_SOURCE_INSTANCE_ID（参数缺失）误译成
+        // "组件实例内部禁止修改"，故 instance 相关只保留下面的精确码映射，不再用宽泛正则。
+        const codeMatch = /"(?:errorCode|code)"\s*:\s*"([A-Z][A-Z0-9_]*)"/.exec(msg)
+            ?? /\[([A-Z][A-Z0-9_]{3,})\]/.exec(msg);
+        if (codeMatch) {
+            const zh = TRANSLATE_CODE_DICT[codeMatch[1]];
+            if (zh) return zh + ' | 原始: ' + msg;
+        }
         const dict: Array<[RegExp, string]> = [
-            [/PARENT_OUTSIDE_SCOPE|SCOPE_DELETED|outside.*scope/i, '[中文] 目标在可编辑范围之外：请在插件里扩大 Link to Selection 范围'],
+            [/PARENT_OUTSIDE_SCOPE|SCOPE_DELETED|SCOPE_INVALID|outside.*scope/i, '[中文] 目标在可编辑范围之外：请在插件里扩大 Link to Selection 范围'],
             [/NAME_MISMATCH|name.*mismatch|currentVariableName/i, '[中文] 名称不匹配：先用 node_info/variable_list 读当前名称，原样传回'],
-            [/instance/i, '[中文] 组件实例内部禁止修改：请改主组件或在实例上设置 override'],
             [/locked/i, '[中文] 图层已锁定：先在 Figma 里解锁'],
             [/CHANNEL_NOT_BOUND/i, '[中文] 频道未绑定：Figma 插件未连接，打开插件点 Connect'],
             [/remote library|read-only in this file/i, '[中文] 远程库资源只读：请到源库文件修改'],
+            [/READ_ONLY_MODE|STYLE_EDITS_DISABLED|VARIABLE_EDITS_DISABLED/i, '[中文] 只读/编辑受限：当前绑定不允许该类修改，请在插件里放开对应编辑权限'],
             [/not found|NOT_FOUND|no longer exists/i, '[中文] 节点/资源不存在：id 可能已变化，重新 node_info 获取'],
             [/Unrecognized key|invalid_argument/i, '[中文] 参数被 schema 拒绝：核对工具描述里的字段名与类型'],
         ];
         for (const [re, zh] of dict) {
-            if (re.test(msg) && !msg.includes('[中文]')) return zh + ' | 原始: ' + msg;
+            if (re.test(msg)) return zh + ' | 原始: ' + msg;
         }
         return msg;
     }
@@ -333,8 +405,19 @@ class Broker {
             const channel = (args as { channel?: string }).channel;
             if (!channel) throw new Error('channel_join 需要 channel 参数');
             const ok = await this.joinChannel(channel);
+            // figma-mcp-server 定制: 失败时返回真实错误信封（errorCode/errorMessage），
+            // 不再把 lastJoinPayload（上次成功的旧 pages/node 数据）套上一层 status:'failed' 返回
+            if (!ok) {
+                const err = this.lastJoinError ?? {};
+                return {
+                    status: 'failed',
+                    channel,
+                    ...(err.errorCode ? { errorCode: err.errorCode } : {}),
+                    ...(err.errorMessage ? { errorMessage: err.errorMessage } : {}),
+                };
+            }
             const payload = (this.lastJoinPayload ?? {}) as Record<string, unknown>;
-            return { ...payload, status: ok ? 'success' : 'failed', channel };
+            return { ...payload, status: 'success', channel };
         }
         let result = await this.mcpClient.callTool({ name, arguments: args });
         // 频道未绑定时自动重 join（用持久化码）并重试一次

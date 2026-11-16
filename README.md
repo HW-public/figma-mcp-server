@@ -1,6 +1,6 @@
 # figma-mcp-server
 
-统一 Figma MCP server：**REST 无头读** + **插件桥实时读写** 双通道，工具自动路由、互为降级。
+统一 Figma MCP server：**REST 无头读** + **插件桥实时读写** 双通道，REST 与 live 工具按通道各司其职、互不降级。
 
 ## 架构设计
 
@@ -101,7 +101,7 @@ claude mcp add figma-mcp-server -- node <仓库路径>\dist\index.js
 ## CI/CD
 
 - **CI**（push/PR 到 main）：Windows 跑 `lint → typecheck → build → bundle → plugin:build → smoke` 全门禁
-- **Release**（推 `v*` tag）：全门禁通过后 `gh release create` 发布三个资产：`index.mjs`（MCP server 单文件）+ `code.js`（插件单文件）+ `manifest.json`（插件清单）
+- **Release**（推 `v*` tag）：全门禁通过后 `gh release create` 发布四个资产：`index.mjs`（MCP server 单文件）+ `broker.mjs`（进程编排单文件）+ `code.js`（插件单文件）+ `manifest.json`（插件清单）
 - 发版流程：改 `package.json` version → commit → `git tag vX.Y.Z` → push tag（与 ssh-mcp-server 一致）
 
 ## 配置（.env）
@@ -111,8 +111,11 @@ claude mcp add figma-mcp-server -- node <仓库路径>\dist\index.js
 | `FIGMA_API_KEY` | 空 | Figma REST token（Settings → Security），不配置则 REST 工具返回结构化错误 |
 | `FIGMA_BASE_URL` | `https://api.figma.com/v1` | REST base url |
 | `FIGMA_EDIT_BRIDGE_PORT` | `3055` | socket 桥端口 |
-| `FIGMA_MCP_CHANNEL` | 空 | 固定频道码；留空则读 `~/.figma-mcp-server.json`（人工 join 成功后自动写入） |
+| `FIGMA_MCP_CHANNEL` | 空 | 固定频道码；留空则读 `%LOCALAPPDATA%\figma-mcp-server\channel.json`（旧版 `~/.figma-mcp-server.json` 首次运行自动迁移；人工 join 成功后自动写入） |
 | `FIGMA_ASSETS_DIR` | `./figma-assets` | 图片导出默认目录 |
+| `FIGMA_MCP_BROKER_PORT` | `3056` | broker 监听端口（客户端经此与 broker 通信） |
+| `FIGMA_MCP_STATE_DIR` | `%LOCALAPPDATA%\figma-mcp-server` | 运行状态目录（log/pid/token/channel.json 等） |
+| `FIGMA_MCP_BROKER_IDLE_EXIT_MS` | `1800000` | broker 无客户端闲置自退阈值（毫秒） |
 
 ## 工具
 
@@ -121,28 +124,34 @@ claude mcp add figma-mcp-server -- node <仓库路径>\dist\index.js
 - `download_images` — 批量导出节点图片（png/jpg/svg/pdf，支持 scale）
 
 **Live 通道（figma-edit-mcp 代理，45 个）**
-- `channel_join` / `channel_leave` — 一般无需手动，broker 自动管理持久化频道
+- `channel_join` — 一般无需手动，broker 自动管理持久化频道；换频道直接再调一次 `channel_join` 即可
 - `page_info` / `node_info` — 读当前打开的文件（写操作前先 discover）
 - `create_frame` / `create_shape` / `create_text` / `create_component` 等 — 画布写入
 - `node_set_fill` / `node_set_corner_radius` / `text_set_content` 等 — 修改
 - `batch_execute` — **批量执行**：一次调用传 ops 数组（≤200 项），broker 内串行执行并逐项返回结果；写大量节点时优先用它替代循环单调
 - 完整清单启动日志可见，或用 MCP 客户端 `tools/list`
 
-## 路由与降级
+## 路由
 
-- 给了 URL/fileKey → 走 REST（无头，不打扰当前打开的画布）；没给定位参数 → 走 live（当前文件）
+不存在自动降级，两个通道各走各的：
+
+- REST 通道的两个工具（`get_design_context` / `download_images`）永远走无头 REST，按 URL/fileKey 定位节点，不依赖当前打开的画布
+- Live 通道的 45 个工具永远操作当前打开的文件，是否传 URL/fileKey 都不影响通道选择
 - 写操作仅 live 通道（Figma REST API 本身不支持写）；REST 收到写需求时请改用 live 工具
-- live 未连接 → 读操作自动落 REST；写操作返回 `LIVE_NOT_CONNECTED` 及修复提示
+- Live 未连接 → live 工具（含读操作）返回 `LIVE_NOT_CONNECTED` 及修复提示，REST 工具不受影响
 - 未配 `FIGMA_API_KEY` → REST 工具返回 `REST_NOT_CONFIGURED`，live 不受影响
-- 两通道都不可用 → 工具返回结构化错误 + 修复提示，互不拖累
+- 两通道相互独立，一个不可用不影响另一个
 
 ## 连接生命周期
 
+会话内的 MCP server 不 spawn 任何进程；一切由 broker 按需编排：
+
 ```
-server 启动
-  ├─ 自动 spawn socket 桥 (broker.mjs --fe-child=socket, :3055)
-  ├─ 自动 spawn figma-edit-mcp server 子进程 → WS 连 socket → 枚举 45 个工具
-  └─ 若已有持久化频道码 (~/.figma-mcp-server.json) → 自动 channel_join
+首个会话首次 live 调用
+  ├─ 按需拉起 broker（抢占 3056 端口，全机唯一）
+  ├─ broker spawn --fe-child=socket → WS 桥 (:3055)
+  ├─ broker spawn --fe-child=server → MCP child 经 WS 重试连接 → 枚举 45 个工具
+  └─ 若已有持久化频道码 (%LOCALAPPDATA%\figma-mcp-server\channel.json) → 自动 channel_join
         ├─ 成功 → 全程无感
         └─ 失败（码已轮换）→ 等人工 join 一次，成功后重新持久化
 ```
@@ -153,7 +162,7 @@ server 启动
 
 | 现象 | 原因与解法 |
 |---|---|
-| `CHANNEL_NOT_BOUND` | 插件未连：Figma 里打开插件点 Connect；频道 join 由 broker 自动管理，一般无需再手动 join |
+| `CHANNEL_NOT_BOUND` | 插件未连：broker 会先用持久化频道码自动重 join 并重试一次，仍失败则 Figma 里打开插件点 Connect；频道 join 由 broker 自动管理，一般无需再手动 join |
 | `LIVE_NOT_CONNECTED` | broker 未起来：任意会话再调一次 live 工具会自动按需拉起；看 `%LOCALAPPDATA%\figma-mcp-server\broker.log` |
 | 工具只剩 2 个（REST） | 到 broker 的连接断了：3 秒自动重连，稍等再试；持续不行就 `taskkill` broker 进程让它重生 |
 | 多会话都想写 Figma | 直接都用 —— broker FIFO 串行处理，天然不冲突 |
@@ -177,7 +186,7 @@ pnpm release    # build + esbuild 单文件 bundle（dist/bundle/index.mjs）
 工程约定同 ssh-mcp-server：pnpm、ESM、strict TS、esbuild bundle、发版走 version + git tag。
 
 **版本与兼容**：语义化版本——工具 schema 新增 = minor，删除/重命名 = major，修复 = patch。
-插件与 server 的频道握手在同 minor 内允许混跑（VERSION_MISMATCH 守卫在 channel 层）。
+插件与 server 的频道握手要求版本精确一致才放行（unknown 放行），不一致即 VERSION_MISMATCH 拒连（守卫在 channel 层）。
 发版：`pnpm run release:check` 全绿（工作区干净/全门禁/定制清单一致）→ 打 `v*` tag 推远端触发
 Release 工作流（Release 说明由 `--generate-notes` 基于提交自动生成）。上游升级流程见
 定制清单 `pnpm run customizations`（升级 runbook 见本地 .omc/UPSTREAM-UPGRADE.md）。

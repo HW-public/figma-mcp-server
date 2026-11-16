@@ -176,7 +176,8 @@ export function registerAnnotationTools(server: McpServer) {
         "annotation_set",
         {
             title: "Set Annotations",
-            description: "Append native annotations to one or more nodes in a batched call. If the status is 'partial_success', treat it as an incomplete operation and report the failed and skipped items to the user. Appending is NOT idempotent and a 'failed' row may already have appended its annotation (verified counts differ, or outcomeUnknown is true when post-state is unreadable; both carry partialMutation: true) — before retrying any non-success item, call annotation_list and compare the labels already on the node, or you will create a duplicate.",
+            // figma-mcp-server 定制：无效 categoryId 在命令级整体拒批
+            description: "Append native annotations to one or more nodes in a batched call. If the status is 'partial_success', treat it as an incomplete operation and report the failed and skipped items to the user. Appending is NOT idempotent and a 'failed' row may already have appended its annotation (verified counts differ, or outcomeUnknown is true when post-state is unreadable; both carry partialMutation: true) — before retrying any non-success item, call annotation_list and compare the labels already on the node, or you will create a duplicate. An invalid categoryId rejects the entire batch before any append (command-level refusal, not a row failure).",
             inputSchema: z.object({
                 annotations: z
                     .array(

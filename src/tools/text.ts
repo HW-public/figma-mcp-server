@@ -53,7 +53,8 @@ export function registerTextTools(server: McpServer) {
             inputSchema: z.object({
                 nodeId: z.string().describe("The ID of the text node to modify"),
                 nodeName: z.string().describe("The node's current exact name, passed back verbatim from `node_info`."),
-                fontSize: z.number().optional().describe("Font size"),
+                // figma-mcp-server 定制：与 style_manage 对齐
+                fontSize: z.number().positive().optional().describe("Font size"),
                 fontName: z
                     .object({
                         family: z.string().describe("Font family name"),
@@ -100,7 +101,8 @@ export function registerTextTools(server: McpServer) {
                     .describe("Vertical text alignment"),
             }),
             outputSchema: looseOutput({
-                success: z.boolean().optional().describe("Whether style was set successfully"),
+                // figma-mcp-server 定制：handler 不返回 success，插件侧恒补 true
+                success: z.boolean().optional().describe("Always true (the plugin handler never returns it; it is filled in as true on success)"),
                 name: z.string().optional().describe("Name of the modified node"),
             }),
             annotations: {

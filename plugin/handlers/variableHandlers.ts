@@ -1203,7 +1203,18 @@ export async function handleVariableRequest(params: any) {
                             id: value.id
                         });
                     } else {
-                        variable.setValueForMode(modeId!, value);
+                        // Value parsing for color (setValueForMode takes r,g,b,a in 0-1);
+                        // mirror the CREATE branch: a missing alpha defaults to 1.
+                        let parsedValue = value;
+                        if (variable.resolvedType === 'COLOR' && typeof value === 'object' && value !== null) {
+                            parsedValue = {
+                                r: value.r || 0,
+                                g: value.g || 0,
+                                b: value.b || 0,
+                                a: value.a !== undefined ? value.a : 1
+                            };
+                        }
+                        variable.setValueForMode(modeId!, parsedValue);
                     }
                 }
             } catch (e) {

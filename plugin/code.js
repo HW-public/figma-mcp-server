@@ -4839,6 +4839,7 @@ Nothing was deleted. Read each listed consumer's current state with node_info (n
     if (textAlignHorizontal !== void 0) node.textAlignHorizontal = textAlignHorizontal;
     if (textAlignVertical !== void 0) node.textAlignVertical = textAlignVertical;
     return {
+      success: true,
       id: node.id,
       name: node.name,
       type: node.type,
@@ -6121,7 +6122,16 @@ Processing annotation ${i + 1}/${annotations.length}:`,
                 id: value.id
               });
             } else {
-              variable.setValueForMode(modeId, value);
+              let parsedValue = value;
+              if (variable.resolvedType === "COLOR" && typeof value === "object" && value !== null) {
+                parsedValue = {
+                  r: value.r || 0,
+                  g: value.g || 0,
+                  b: value.b || 0,
+                  a: value.a !== void 0 ? value.a : 1
+                };
+              }
+              variable.setValueForMode(modeId, parsedValue);
             }
           }
         } catch (e) {
@@ -6236,7 +6246,7 @@ Processing annotation ${i + 1}/${annotations.length}:`,
         style.name = name;
         applied.push(`name (was "${before.name}")`);
       }
-      if (description) {
+      if (description !== void 0) {
         style.description = description;
         applied.push("description");
       }

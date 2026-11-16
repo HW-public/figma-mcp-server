@@ -32,6 +32,8 @@ export function createServer(config: Config, live: LiveChannel): Server {
                         + '{"name":"node_set_fill","args":{"nodeId":"@op0.id","r":1,"g":0.38,"b":0.3}}],'
                         + '"verbose":false}'
                         + ' args 中的字符串 "@opN.字段路径" 会被替换为同批第 N 个 op 的返回字段（create_* 返回 {id,name}，故 "@op0.id" 引用第 0 个 op 创建的节点）。'
+                        // figma-mcp-server 定制：batch 引用/超时防坑说明
+                        + ' 引用失败 op 的字段会导致本 op 报错（batch 引用未解析）。单批 150s 超时。'
                         + ' verbose:false 只返回 {total,executed,failed,allOk,failures}。abortOnError:true 时首个失败即停。'
                         + ' node_set_fill 图片用 {"image":{"filePath":"C:\\\\绝对\\\\路径.png"}}（broker 读本地文件，勿用 localhost/file://）。',
                     inputSchema: {

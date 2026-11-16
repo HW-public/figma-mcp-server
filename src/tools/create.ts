@@ -38,7 +38,8 @@ export function registerCreateTools(server: McpServer) {
                     innerRadius: z.number().min(0).max(1).optional().describe("0.0–1.0, creates donut hole (default: 0)"),
                 }).optional().describe("Optional arc data for creating arcs/donuts (ELLIPSE only)"),
                 pointCount: z.number().min(3).optional().describe("Number of sides (polygon) or points (star), ≥3. Required for POLYGON and STAR."),
-                innerRadius: z.number().min(0).max(1).optional().describe("0.0–1.0, star sharpness (default: 1.0). STAR only."),
+                // figma-mcp-server 定制：修正默认值描述（Figma star 缺省内径，并非固定 1.0）
+                innerRadius: z.number().min(0).max(1).optional().describe("0.0–1.0, star sharpness. STAR only; Figma star default if omitted."),
                 // figma-mcp-server 定制：创建时即设圆角（RECTANGLE only，插件侧 handler 已支持）
                 cornerRadius: z.number().min(0).optional().describe("Corner radius at creation; RECTANGLE only"),
             }),
@@ -76,7 +77,8 @@ export function registerCreateTools(server: McpServer) {
                     g: z.number().min(0).max(1).describe("Green component (0-1)"),
                     b: z.number().min(0).max(1).describe("Blue component (0-1)"),
                     a: z.number().min(0).max(1).optional().describe("Alpha component (0-1)"),
-                }).optional().describe("Fill color in RGBA format"),
+                // figma-mcp-server 定制：broker 侧省略时补白色填充
+                }).optional().describe("Fill color in RGBA format; omitted = white fill {1,1,1,1}"),
                 strokeColor: z.object({
                     r: z.number().min(0).max(1).describe("Red component (0-1)"),
                     g: z.number().min(0).max(1).describe("Green component (0-1)"),
@@ -85,16 +87,17 @@ export function registerCreateTools(server: McpServer) {
                 }).optional().describe("Stroke color in RGBA format"),
                 strokeWeight: z.number().positive().optional().describe("Stroke weight"),
                 layoutMode: z.enum(["NONE", "HORIZONTAL", "VERTICAL"]).optional().describe("Auto-layout mode for the frame"),
-                layoutWrap: z.enum(["NO_WRAP", "WRAP"]).optional().describe("Whether the auto-layout frame wraps its children"),
-                paddingTop: z.number().optional().describe("Top padding for auto-layout frame"),
-                paddingRight: z.number().optional().describe("Right padding for auto-layout frame"),
-                paddingBottom: z.number().optional().describe("Bottom padding for auto-layout frame"),
-                paddingLeft: z.number().optional().describe("Left padding for auto-layout frame"),
-                primaryAxisAlignItems: z.enum(["MIN", "MAX", "CENTER", "SPACE_BETWEEN"]).optional().describe("Primary axis alignment for auto-layout frame. Note: When set to SPACE_BETWEEN, itemSpacing will be ignored as children will be evenly spaced."),
-                counterAxisAlignItems: z.enum(["MIN", "MAX", "CENTER", "BASELINE"]).optional().describe("Counter axis alignment for auto-layout frame"),
-                layoutSizingHorizontal: z.enum(["FIXED", "HUG", "FILL"]).optional().describe("Horizontal sizing mode for auto-layout frame"),
-                layoutSizingVertical: z.enum(["FIXED", "HUG", "FILL"]).optional().describe("Vertical sizing mode for auto-layout frame"),
-                itemSpacing: z.number().optional().describe("Distance between children in auto-layout frame. Note: This value will be ignored if primaryAxisAlignItems is set to SPACE_BETWEEN."),
+                // figma-mcp-server 定制：以下布局参数仅在 layoutMode 为 HORIZONTAL/VERTICAL 时生效
+                layoutWrap: z.enum(["NO_WRAP", "WRAP"]).optional().describe("Whether the auto-layout frame wraps its children; ignored unless layoutMode is HORIZONTAL or VERTICAL"),
+                paddingTop: z.number().optional().describe("Top padding for auto-layout frame; ignored unless layoutMode is HORIZONTAL or VERTICAL"),
+                paddingRight: z.number().optional().describe("Right padding for auto-layout frame; ignored unless layoutMode is HORIZONTAL or VERTICAL"),
+                paddingBottom: z.number().optional().describe("Bottom padding for auto-layout frame; ignored unless layoutMode is HORIZONTAL or VERTICAL"),
+                paddingLeft: z.number().optional().describe("Left padding for auto-layout frame; ignored unless layoutMode is HORIZONTAL or VERTICAL"),
+                primaryAxisAlignItems: z.enum(["MIN", "MAX", "CENTER", "SPACE_BETWEEN"]).optional().describe("Primary axis alignment for auto-layout frame; ignored unless layoutMode is HORIZONTAL or VERTICAL. Note: When set to SPACE_BETWEEN, itemSpacing will be ignored as children will be evenly spaced."),
+                counterAxisAlignItems: z.enum(["MIN", "MAX", "CENTER", "BASELINE"]).optional().describe("Counter axis alignment for auto-layout frame; ignored unless layoutMode is HORIZONTAL or VERTICAL"),
+                layoutSizingHorizontal: z.enum(["FIXED", "HUG", "FILL"]).optional().describe("Horizontal sizing mode for auto-layout frame; ignored unless layoutMode is HORIZONTAL or VERTICAL"),
+                layoutSizingVertical: z.enum(["FIXED", "HUG", "FILL"]).optional().describe("Vertical sizing mode for auto-layout frame; ignored unless layoutMode is HORIZONTAL or VERTICAL"),
+                itemSpacing: z.number().optional().describe("Distance between children in auto-layout frame; ignored unless layoutMode is HORIZONTAL or VERTICAL. Note: This value will be ignored if primaryAxisAlignItems is set to SPACE_BETWEEN."),
                 // figma-mcp-server 定制：创建时即设圆角（插件侧 handler 已支持）
                 cornerRadius: z.number().min(0).optional().describe("Corner radius at creation (frame)"),
             }),
@@ -135,8 +138,10 @@ export function registerCreateTools(server: McpServer) {
                     g: z.number().min(0).max(1).describe("Green component (0-1)"),
                     b: z.number().min(0).max(1).describe("Blue component (0-1)"),
                     a: z.number().min(0).max(1).optional().describe("Alpha component (0-1)"),
-                }).optional().describe("Font color in RGBA format"),
-                name: z.string().min(1).optional().describe("Optional non-empty semantic layer name for the text node"),
+                // figma-mcp-server 定制：broker 侧省略时补黑色
+                }).optional().describe("Font color in RGBA format (default: black)"),
+                // figma-mcp-server 定制：broker 侧省略时默认 'Text'
+                name: z.string().min(1).optional().describe("Optional non-empty semantic layer name for the text node (default: 'Text')"),
                 parentId: z.string().describe("Parent node ID to append the text to"),
                 parentNodeName: z.string().describe("The parent node's current exact name, passed back verbatim from `node_info`."),
                 // figma-mcp-server 定制：固定宽自动换行 + 对齐/行高/字距（插件侧 handler 已支持）
@@ -200,7 +205,8 @@ export function registerCreateTools(server: McpServer) {
         "create_component",
         {
             title: "Create Component",
-            description: "Convert an existing frame into a main component.",
+            // figma-mcp-server 定制：描述对齐实际行为（新建组件 + 迁移 children + 删除原 frame）
+            description: "Convert an existing frame into a main component. Creates a NEW component node with a NEW id and removes the original frame; update any stored references.",
             inputSchema: z.object({
                 nodeId: z.string().describe("The ID of the frame to convert to a component"),
                 nodeName: z.string().describe("The node's current exact name, passed back verbatim from `node_info`."),
@@ -255,14 +261,17 @@ export function registerCreateTools(server: McpServer) {
         "create_component_set",
         {
             title: "Create Component Set",
-            description: "Combine components into a component set (variants) with property definitions.",
+            // figma-mcp-server 定制：描述补 propertyValues 约束与组件重命名行为
+            description: "Combine components into a component set (variants) with property definitions. Each entry's `propertyValues` must be non-empty, must not contain '=' or ',', its length must equal the `properties` array length, and the value combination must be unique across components (each component is a distinct variant). Each component is renamed to 'Prop=Val' variant name — re-read with node_info before later name-checked calls.",
             inputSchema: z.object({
                 components: z.array(z.object({
                     nodeId: z.string().describe("ID of the component"),
                     nodeName: z.string().describe("The component's current exact name, passed back verbatim from `node_info`."),
-                    propertyValues: z.array(z.string()).describe("Values corresponding to properties array")
-                })).describe("Array of component objects"),
-                properties: z.array(z.string()).describe("Array of property names (e.g. ['Size', 'State'])"),
+                    // figma-mcp-server 定制：约束在描述中声明，插件侧校验
+                    propertyValues: z.array(z.string()).describe("Values corresponding to properties array: non-empty, no '=' or ',', length equals properties array length; combination unique across components")
+                })).min(1).describe("Array of component objects"),
+                // figma-mcp-server 定制：至少一个属性
+                properties: z.array(z.string()).min(1).describe("Array of property names (e.g. ['Size', 'State'])"),
                 componentSetName: z.string().min(1).optional().describe("Optional non-empty name for the component set"),
                 parentId: z.string().describe("ID of the appendable parent container (frame, group, page, section, etc.) to place the set in; discover it with node_info"),
                 parentNodeName: z.string().describe("The parent node's current exact name, passed back verbatim from `node_info`."),

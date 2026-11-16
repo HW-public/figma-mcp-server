@@ -113,7 +113,8 @@ export function registerNodeTools(server: McpServer) {
         "node_transform",
         {
             title: "Transform Node",
-            description: "Move and/or resize a node by setting absolute `x`/`y`/`width`/`height` (any subset).",
+            // figma-mcp-server 定制：描述补 auto-layout 限制
+            description: "Move and/or resize a node by setting absolute `x`/`y`/`width`/`height` (any subset). Auto-layout limits: if the node's parent is auto-layout and the node is not absolutely positioned, setting `x`/`y` fails with Operation Denied; resizing a node whose parent uses HUG/FILL sizing knocks that axis back to FIXED, reported via `warnings`.",
             inputSchema: z.object({
                 nodeId: z.string().describe("The ID of the node to transform"),
                 nodeName: z.string().describe("The node's current exact name, passed back verbatim from `node_info`."),
@@ -129,6 +130,8 @@ export function registerNodeTools(server: McpServer) {
                 y: z.number().optional().describe("Resulting Y position"),
                 width: z.number().optional().describe("Resulting width"),
                 height: z.number().optional().describe("Resulting height"),
+                // figma-mcp-server 定制：HUG/FILL 被打回 FIXED 等降级经 warnings 返回
+                warnings: z.array(z.string()).optional().describe("Non-fatal side effects (e.g., a parent HUG/FILL axis knocked back to FIXED by a resize)"),
             }),
             annotations: {
                 idempotentHint: true,
@@ -215,8 +218,8 @@ export function registerNodeTools(server: McpServer) {
             inputSchema: z.object({
                 nodeId: z.string().describe("The ID of the node to clone"),
                 nodeName: z.string().describe("The node's current exact name, passed back verbatim from `node_info`."),
-                x: z.number().optional().describe("New X position for the clone"),
-                y: z.number().optional().describe("New Y position for the clone"),
+                x: z.number().optional().describe("New X position for the clone; must be provided together with y — giving only one leaves position unchanged"),
+                y: z.number().optional().describe("New Y position for the clone; must be provided together with x — giving only one leaves position unchanged"),
             }),
             outputSchema: looseOutput({
                 id: z.string().describe("ID of the new cloned node"),
@@ -269,7 +272,8 @@ export function registerNodeTools(server: McpServer) {
         "node_group",
         {
             title: "Group Nodes",
-            description: "Wrap multiple nodes in a new group node.",
+            // figma-mcp-server 定制：nodes 至少 2 个，且必须同父
+            description: "Wrap multiple nodes in a new group node; all nodes must share the same parent.",
             inputSchema: z.object({
                 nodes: z
                     .array(
@@ -278,7 +282,8 @@ export function registerNodeTools(server: McpServer) {
                             nodeName: z.string().describe("The node's current exact name, passed back verbatim from `node_info`."),
                         })
                     )
-                    .describe("Array of nodes to group"),
+                    .min(2)
+                    .describe("Array of nodes to group (at least 2, all sharing the same parent)"),
                 name: z.string().min(1).optional().describe("Optional non-empty name for the new group. Omit to accept Figma's default; `\"\"` is refused rather than silently substituted."),
             }),
             outputSchema: looseOutput({
@@ -388,7 +393,8 @@ export function registerNodeTools(server: McpServer) {
         "node_set_auto_layout",
         {
             title: "Set Auto Layout",
-            description: "Configure a frame's auto-layout (mode, padding, spacing, alignment, sizing) in one unified setter.",
+            // figma-mcp-server 定制：描述补 NONE 拒绝布局参数、BASELINE 限制、适用节点类型、layoutWrap 限制
+            description: "Configure a frame's auto-layout (mode, padding, spacing, alignment, sizing) in one unified setter. Also accepts COMPONENT/COMPONENT_SET/INSTANCE targets. Frames with layoutMode NONE reject padding/alignment/spacing params with Operation Denied; `layoutWrap` is ignored when layoutMode is NONE. BASELINE counter-axis alignment is only valid for HORIZONTAL.",
             inputSchema: z.object({
                 nodeId: z.string().describe("The ID of the frame to modify"),
                 nodeName: z.string().describe("The node's current exact name, passed back verbatim from `node_info`."),
@@ -473,8 +479,8 @@ export function registerNodeTools(server: McpServer) {
                     .max(1)
                     .optional()
                     .describe("Alpha component (0-1)"),
-                // figma-mcp-server 定制：渐变填充（插件侧 handler 精校）
-                gradient: z.any().optional().describe("Gradient fill: {type: LINEAR|RADIAL|ANGULAR|DIAMOND, stops: [{position, color: {r,g,b,a}}], gradientTransform?}"),
+                // figma-mcp-server 定制：渐变约束补全（clamp、GRADIENT_ 前缀、≥2 stops）
+                gradient: z.any().optional().describe("Gradient fill: {type: LINEAR|RADIAL|ANGULAR|DIAMOND (GRADIENT_ prefix also accepted), stops: [{position, color: {r,g,b,a}}], gradientTransform?}. Stop positions are clamped to 0-1; at least 2 stops required."),
                 image: z.object({
                     url: z.string().url().optional().describe("HTTP(S) URL to a PNG/JPEG/GIF the plugin fetches via createImageAsync. Max 4096px per side and NOT resized — pre-resize larger images yourself, or use bytesBase64 (which is auto-resized)."),
                     bytesBase64: z.string().optional().describe("Base64-encoded raw PNG/JPEG/GIF bytes. PNG/JPEG over 4096px per side are auto-downscaled server-side (aspect ratio preserved); GIF is not resized. Very large PNG/JPEG (over ~45 megapixels) exceed the server resize budget and are rejected — pre-resize those yourself. Heavier over the socket."),
@@ -568,7 +574,8 @@ export function registerNodeTools(server: McpServer) {
                     .max(1)
                     .optional()
                     .describe("Alpha component (0-1)"),
-                weight: z.number().positive().optional().describe("Uniform stroke weight (used when individual side weights are not provided)"),
+                // figma-mcp-server 定制：broker 侧省略时默认 1
+                weight: z.number().positive().optional().describe("Uniform stroke weight (used when individual side weights are not provided); default 1"),
                 strokeTopWeight: z.number().min(0).optional().describe("Top side stroke weight"),
                 strokeBottomWeight: z.number().min(0).optional().describe("Bottom side stroke weight"),
                 strokeLeftWeight: z.number().min(0).optional().describe("Left side stroke weight"),
