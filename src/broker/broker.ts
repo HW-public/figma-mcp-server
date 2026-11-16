@@ -48,6 +48,55 @@ function log(config: Config, line: string): void {
     console.error(`[broker] ${line}`);
 }
 
+// figma-mcp-server 定制: 从错误文本提取错误码——优先 JSON 的 errorCode/code 字段，回退 [CODE] 方括号形式
+function extractErrorCode(msg: string): string | undefined {
+    return (/"(?:errorCode|code)"\s*:\s*"([A-Z][A-Z0-9_]*)"/.exec(msg)
+        ?? /\[([A-Z][A-Z0-9_]{3,})\]/.exec(msg))?.[1];
+}
+
+// figma-mcp-server 定制: 从 MCP CallToolResult 提取 content 文本（isError 结果的错误信息载体）；
+// 无 content 文本时回退整体序列化，保证错误码正则仍可命中
+function extractContentText(result: unknown): string {
+    const content = (result as { content?: Array<{ type?: string; text?: unknown }> }).content;
+    if (Array.isArray(content)) {
+        const text = content
+            .map((c) => (typeof c?.text === 'string' ? c.text : ''))
+            .filter(Boolean)
+            .join('\n');
+        if (text) return text;
+    }
+    return JSON.stringify(result) ?? '';
+}
+
+// figma-mcp-server 定制: 审计日志参数摘要——bytesBase64 脱敏为 <bytes:N>（N 为解码后约字节数），
+// 长 filePath 截尾只留末段，整体序列化截 100 字符，防 base64/绝对路径刷屏
+function summarizeForAudit(args: unknown): string {
+    const sanitize = (v: unknown): unknown => {
+        if (Array.isArray(v)) return v.map(sanitize);
+        if (v !== null && typeof v === 'object') {
+            const out: Record<string, unknown> = {};
+            for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
+                if (k === 'bytesBase64' && typeof val === 'string') {
+                    out[k] = `<bytes:${Math.round(val.length * 3 / 4)}>`;
+                } else if (k === 'filePath' && typeof val === 'string' && val.length > 60) {
+                    out[k] = `…${val.slice(-40)}`;
+                } else {
+                    out[k] = sanitize(val);
+                }
+            }
+            return out;
+        }
+        return v;
+    };
+    let s: string;
+    try {
+        s = JSON.stringify(sanitize(args)) ?? '';
+    } catch {
+        s = String(args);
+    }
+    return s.length > 100 ? `${s.slice(0, 100)}…` : s;
+}
+
 function ensureToken(config: Config): string {
     try {
         if (existsSync(config.brokerTokenFile)) {
@@ -363,11 +412,11 @@ class Broker {
         // （protocol/errorCodes.ts 的 RATIFIED_CODES 等）精确查表给中文；查不到再回退全文正则兜底。
         // 旧版仅靠 8 条宽泛正则：/instance/i 会把 MISSING_SOURCE_INSTANCE_ID（参数缺失）误译成
         // "组件实例内部禁止修改"，故 instance 相关只保留下面的精确码映射，不再用宽泛正则。
-        const codeMatch = /"(?:errorCode|code)"\s*:\s*"([A-Z][A-Z0-9_]*)"/.exec(msg)
-            ?? /\[([A-Z][A-Z0-9_]{3,})\]/.exec(msg);
-        if (codeMatch) {
-            const zh = TRANSLATE_CODE_DICT[codeMatch[1]];
-            if (zh) return zh + ' | 原始: ' + msg;
+        const code = extractErrorCode(msg);
+        if (code) {
+            const zh = TRANSLATE_CODE_DICT[code];
+            // figma-mcp-server 定制: 译文保留原始错误码后缀，AI 可程序化匹配错误类型
+            if (zh) return `${zh} (code: ${code}) | 原始: ${msg}`;
         }
         const dict: Array<[RegExp, string]> = [
             [/PARENT_OUTSIDE_SCOPE|SCOPE_DELETED|SCOPE_INVALID|outside.*scope/i, '[中文] 目标在可编辑范围之外：请在插件里扩大 Link to Selection 范围'],
@@ -380,21 +429,37 @@ class Broker {
             [/Unrecognized key|invalid_argument/i, '[中文] 参数被 schema 拒绝：核对工具描述里的字段名与类型'],
         ];
         for (const [re, zh] of dict) {
-            if (re.test(msg)) return zh + ' | 原始: ' + msg;
+            if (re.test(msg)) return zh + (code ? ` (code: ${code})` : '') + ' | 原始: ' + msg;
         }
         return msg;
     }
 
     private async execToolWrapped(name: string, args: Record<string, unknown>): Promise<unknown> {
+        // figma-mcp-server 定制: 工具调用审计（FIGMA_MCP_AUDIT_LOG=off 全关，默认开），出入口各一行
+        const startedAt = Date.now();
+        if (this.config.auditLog) log(this.config, `[call] ${name} ${summarizeForAudit(args)}`);
         try {
             const result = await this.execTool(name, args);
             if ((result as { isError?: boolean }).isError) {
-                const text = JSON.stringify(result);
-                return { isError: true, content: [{ type: 'text', text: this.translateError(text) }] };
+                // figma-mcp-server 定制: SDK 的 isError 结果提取 content 文本走与 catch 分支相同的
+                // translateError 处理，保持 isError 语义返回给瘦客户端（result 对象自带 isError 字段，
+                // client/live.ts 原样透传 → src/server.ts 原样返回 CallToolResult）
+                const message = this.translateError(extractContentText(result));
+                if (this.config.auditLog) {
+                    log(this.config, `[fail] ${name} ${Date.now() - startedAt}ms ${extractErrorCode(message) ?? '-'}: ${message.slice(0, 150)}`);
+                }
+                return { isError: true, content: [{ type: 'text', text: message }] };
             }
+            // join 失败时 result.status==='failed'（无 isError），审计不能记 ok
+            const joinFailed = (result as { status?: string })?.status === 'failed';
+            if (this.config.auditLog && !joinFailed) log(this.config, `[ok] ${name} ${Date.now() - startedAt}ms`);
             return result;
         } catch (e) {
-            throw new Error(this.translateError((e as Error).message));
+            const message = this.translateError((e as Error).message);
+            if (this.config.auditLog) {
+                log(this.config, `[fail] ${name} ${Date.now() - startedAt}ms ${extractErrorCode(message) ?? '-'}: ${message.slice(0, 150)}`);
+            }
+            throw new Error(message);
         }
     }
 
@@ -477,26 +542,37 @@ class Broker {
         const trimmed = ops.slice(0, MAX_OPS);
         const results: Array<Record<string, unknown>> = [];
         const rawByIndex: unknown[] = [];
-        const failures: Array<{ index: number; name: string; error: string }> = [];
+        const failures: Array<{ index: number; name: string; code?: string; message: string }> = [];
+        const startedAt = Date.now();
         for (let i = 0; i < trimmed.length; i++) {
             const op = trimmed[i];
             try {
                 const resolvedArgs = this.resolveRefs(op.args ?? {}, rawByIndex) as Record<string, unknown>;
                 const result = await this.execToolWrapped(op.name, resolvedArgs);
                 if ((result as { isError?: boolean }).isError) {
-                    const error = JSON.stringify(result).slice(0, 500);
-                    failures.push({ index: i, name: op.name, error });
-                    results.push({ index: i, ok: false, error });
+                    // figma-mcp-server 定制: isError 项计入 failed，failures 带 code/message 摘要（修 allOk 虚高）
+                    const message = extractContentText(result).slice(0, 200);
+                    const code = extractErrorCode(message);
+                    failures.push({ index: i, name: op.name, ...(code ? { code } : {}), message });
+                    results.push({ index: i, ok: false, error: `${code ? `${code}: ` : ''}${message}` });
                     if (abortOnError) break;
                 } else {
                     rawByIndex[i] = result;
                     results.push({ index: i, ok: true, result });
                 }
             } catch (e) {
-                const error = (e as Error).message;
-                failures.push({ index: i, name: op.name, error });
-                results.push({ index: i, ok: false, error });
+                const message = (e as Error).message.slice(0, 200);
+                const code = extractErrorCode(message);
+                failures.push({ index: i, name: op.name, ...(code ? { code } : {}), message });
+                results.push({ index: i, ok: false, error: `${code ? `${code}: ` : ''}${message}` });
                 if (abortOnError) break;
+            }
+        }
+        // figma-mcp-server 定制: batch 审计汇总行 + 失败项简摘（开关同单调审计）
+        if (this.config.auditLog) {
+            log(this.config, `[batch] ${trimmed.length} ops → ${results.length}/${failures.length} (${Date.now() - startedAt}ms)`);
+            for (const f of failures) {
+                log(this.config, `[batch-fail] #${f.index} ${f.name}: ${(f.code ?? f.message).slice(0, 150)}`);
             }
         }
         const summary = {

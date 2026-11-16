@@ -18,6 +18,8 @@ export interface Config {
     brokerLogFile: string;
     /** broker 无客户端闲置自退毫秒数 */
     brokerIdleExitMs: number;
+    /** 工具调用审计日志（env FIGMA_MCP_AUDIT_LOG=off 关闭，默认开） */
+    auditLog: boolean;
     /** 固定频道码（env 优先；未配置时读持久化文件） */
     channel: string | null;
     /** 频道持久化文件路径（join 成功后写入，供下次启动自动 join） */
@@ -74,6 +76,7 @@ export function loadConfig(): Config {
         brokerPidFile: join(stateDir, 'broker.pid'),
         brokerLogFile: join(stateDir, 'broker.log'),
         brokerIdleExitMs: parseInt(env.FIGMA_MCP_BROKER_IDLE_EXIT_MS ?? String(30 * 60 * 1000), 10),
+        auditLog: (env.FIGMA_MCP_AUDIT_LOG ?? 'on') !== 'off',
         channel: (env.FIGMA_MCP_CHANNEL && env.FIGMA_MCP_CHANNEL.length > 0)
             ? env.FIGMA_MCP_CHANNEL
             : readPersistedChannel(stateDir),

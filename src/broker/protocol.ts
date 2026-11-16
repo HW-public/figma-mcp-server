@@ -60,7 +60,7 @@ export interface BatchResultMsg {
     failed: number;
     allOk: boolean;
     results?: Array<Record<string, unknown>>;
-    failures?: Array<{ index: number; name: string; error: string }>;
+    failures?: Array<{ index: number; name: string; code?: string; message: string }>;
 }
 export interface StatusMsg { type: 'status' }
 export interface StatusReportMsg {
