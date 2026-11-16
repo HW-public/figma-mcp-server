@@ -4584,10 +4584,12 @@ Nothing was deleted. Read each listed consumer's current state with node_info (n
         nodes: allResults
       };
     } catch (error) {
-      throw new Error(`Failed to get reactions: ${error.message}`);
+      const detail = error instanceof Error ? error.message : String(error);
+      throw new Error(`Failed to get reactions: ${detail}`);
     }
   }
   async function updateReactions(params) {
+    var _a;
     const { nodeId, reactions } = params || {};
     if (!nodeId) {
       throw new Error("Missing nodeId parameter");
@@ -4606,7 +4608,8 @@ Nothing was deleted. Read each listed consumer's current state with node_info (n
       await node.setReactionsAsync(reactions);
       return { success: true, message: `Successfully updated reactions for node ${nodeId}` };
     } catch (e) {
-      throw new Error(`Failed to update reactions: ${e.message}`);
+      const detail = e instanceof Error ? (_a = e.stack) != null ? _a : e.message : e === void 0 ? "undefined (Figma API \u672A\u7ED9\u51FA\u539F\u56E0)" : String(e);
+      throw new Error(`Failed to update reactions: ${detail}`);
     }
   }
 

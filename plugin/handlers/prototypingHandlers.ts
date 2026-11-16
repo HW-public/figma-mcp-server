@@ -157,7 +157,8 @@ export async function getReactions(nodeIds: any) {
             nodes: allResults,
         };
     } catch (error: any) {
-        throw new Error(`Failed to get reactions: ${error.message}`);
+        const detail = error instanceof Error ? error.message : String(error);
+        throw new Error(`Failed to get reactions: ${detail}`);
     }
 }
 
@@ -185,6 +186,8 @@ export async function updateReactions(params: any) {
         await (node as any).setReactionsAsync(reactions);
         return { success: true, message: `Successfully updated reactions for node ${nodeId}` };
     } catch (e: any) {
-        throw new Error(`Failed to update reactions: ${e.message}`);
+        // figma-mcp-server 定制：Figma API 可能抛非 Error 值（undefined/字符串），必须安全序列化，否则错误链路断成 "undefined"
+        const detail = e instanceof Error ? (e.stack ?? e.message) : (e === undefined ? 'undefined (Figma API 未给出原因)' : String(e));
+        throw new Error(`Failed to update reactions: ${detail}`);
     }
 }

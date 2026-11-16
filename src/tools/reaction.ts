@@ -17,7 +17,7 @@ const ActionSchema: z.ZodType<any> = z.lazy(() => z.union([
     z.object({ type: z.literal("SET_VARIABLE"), variableId: z.string().nullable(), variableValue: VariableDataSchema.optional() }),
     z.object({ type: z.literal("SET_VARIABLE_MODE"), variableCollectionId: z.string().nullable(), variableModeId: z.string().nullable() }),
     z.object({ type: z.literal("CONDITIONAL"), conditionalBlocks: z.array(z.object({ condition: VariableDataSchema.optional(), actions: z.array(ActionSchema) })) }),
-    z.object({ type: z.literal("NODE"), destinationId: z.string().nullable(), navigation: z.string(), transition: z.any().nullable().optional(), preserveScrollPosition: z.boolean().optional(), overlayRelativePosition: z.any().optional(), resetVideoPosition: z.boolean().optional(), resetScrollPosition: z.boolean().optional(), resetInteractiveComponents: z.boolean().optional() }),
+    z.object({ type: z.literal("NODE"), destinationId: z.string().nullable(), navigation: z.string(), transition: z.any().nullable().optional().describe('Transition object: { type: "SMART_ANIMATE"|"INSTANT_ANIMATE"|"DISSOLVE"|"MOVE_IN"|"MOVE_OUT"|"PUSH"|"SLIDE_IN"|"SLIDE_OUT", duration: ms, easing: { type: easingEnum } }. easing.type: EASE_IN|EASE_OUT|EASE_IN_AND_OUT|LINEAR|EASE_IN_BACK|EASE_OUT_BACK|EASE_IN_AND_OUT_BACK|CUSTOM_CUBIC_BEZIER|GENTLE|QUICK|BOUNCY|SLOW|CUSTOM_SPRING. easing MUST be an object (bare string rejected); do NOT pass matchLayers.'), preserveScrollPosition: z.boolean().optional(), overlayRelativePosition: z.any().optional(), resetVideoPosition: z.boolean().optional(), resetScrollPosition: z.boolean().optional(), resetInteractiveComponents: z.boolean().optional() }),
 ]));
 
 const TriggerSchema = z.object({
