@@ -178,8 +178,8 @@ pnpm release    # build + esbuild 单文件 bundle（dist/bundle/index.mjs）
 
 **版本与兼容**：语义化版本——工具 schema 新增 = minor，删除/重命名 = major，修复 = patch。
 插件与 server 的频道握手在同 minor 内允许混跑（VERSION_MISMATCH 守卫在 channel 层）。
-发版：`pnpm run release:check` 全绿（CHANGELOG/定制清单/门禁）→ 打 `v*` tag 推远端触发
-Release 工作流；`CHANGELOG.md` 维护纪律见 Keep a Changelog。上游升级流程见
+发版：`pnpm run release:check` 全绿（工作区干净/全门禁/定制清单一致）→ 打 `v*` tag 推远端触发
+Release 工作流（Release 说明由 `--generate-notes` 基于提交自动生成）。上游升级流程见
 定制清单 `pnpm run customizations`（升级 runbook 见本地 .omc/UPSTREAM-UPGRADE.md）。
 
 **自维护组件**：figma-edit-mcp server 端源码已并入主工程，按职责分布在 `src/bridge/`（插件桥进程对）、

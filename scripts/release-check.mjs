@@ -18,14 +18,7 @@ const check = (name, ok, detail = '') => {
 const status = run('git', ['status', '--porcelain'], { cwd: root, encoding: 'utf-8' }).trim();
 check('git 工作区干净', status === '', status.split('\n')[0] ?? '');
 
-// 2. CHANGELOG 含当前版本
-const changelog = readFileSync(join(root, 'CHANGELOG.md'), 'utf-8');
-check(`CHANGELOG 含 [${version}] 段落`, changelog.includes(`[${version}]`));
-
-// 3. 无遗留 Unreleased 空段检查（Unreleased 下允许有内容，但必须有实际条目才警告——软检查）
-check('CHANGELOG [Unreleased] 非空即提示', true);
-
-// 4. 全门禁
+// 2. 全门禁
 const gates = [
     ['lint', 'pnpm run lint'],
     ['typecheck', 'pnpm run typecheck'],
@@ -43,7 +36,7 @@ for (const [name, cmd] of gates) {
     }
 }
 
-// 5. 定制清单与文档一致（重新生成后 scripts/CUSTOMIZATIONS.md 无 diff）
+// 3. 定制清单与文档一致（重新生成后 scripts/CUSTOMIZATIONS.md 无 diff）
 run('node', ['scripts/list-customizations.mjs'], { cwd: root, stdio: 'pipe' });
 const diff = run('git', ['diff', '--stat', 'scripts/CUSTOMIZATIONS.md'], { cwd: root, encoding: 'utf-8' }).trim();
 check('定制清单已同步（list-customizations 无未提交 diff）', diff === '', diff.split('\n')[0] ?? '');
