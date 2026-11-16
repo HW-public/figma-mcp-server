@@ -84,9 +84,12 @@ if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
 }
 $repoMode = [bool]$PSScriptRoot
 $repoVersion = $null
-$repoPkgPath = Join-Path $PSScriptRoot 'package.json'
-if ($repoMode -and (Test-Path $repoPkgPath)) {
-  $repoVersion = (Get-Content $repoPkgPath -Raw | ConvertFrom-Json).version
+# iex 模式下 $PSScriptRoot 为空串，Join-Path 必须只在仓库模式执行（空 Path 会直接报错）
+if ($repoMode) {
+  $repoPkgPath = Join-Path $PSScriptRoot 'package.json'
+  if (Test-Path $repoPkgPath) {
+    $repoVersion = (Get-Content $repoPkgPath -Raw | ConvertFrom-Json).version
+  }
 }
 
 # --- uninstall 早退 -----------------------------------------------------------
@@ -195,8 +198,9 @@ Write-Host "[ok] current → versions\$targetVersion" -ForegroundColor Green
 # --- .env（跨版本保留，不覆盖） ---------------------------------------------------
 $envFile = Join-Path $InstallDir '.env'
 if (-not (Test-Path $envFile)) {
-  $template = Join-Path $PSScriptRoot '.env.example'
-  if ($repoMode -and (Test-Path $template)) {
+  # iex 模式下 $PSScriptRoot 为空串，Join-Path 只在仓库模式执行
+  $template = $(if ($repoMode) { Join-Path $PSScriptRoot '.env.example' } else { '' })
+  if ($template -and (Test-Path $template)) {
     Copy-Item $template $envFile
   } else {
     New-Item -ItemType File -Path $envFile | Out-Null
