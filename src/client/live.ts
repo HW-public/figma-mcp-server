@@ -34,6 +34,21 @@ export class LiveChannel {
         return this.status.broker === 'connected';
     }
 
+    /** 等待 broker 恢复连接（被杀后自愈窗口约 3-8s）；已连接则立即返回。超时返回 false，不抛 */
+    waitConnected(timeoutMs = 10_000): Promise<boolean> {
+        if (this.status.broker === 'connected') return Promise.resolve(true);
+        return new Promise<boolean>((resolve) => {
+            const timer = setTimeout(() => {
+                const i = this.connectWaiters.indexOf(done);
+                if (i >= 0) this.connectWaiters.splice(i, 1);
+                resolve(this.status.broker === 'connected');
+            }, timeoutMs);
+            const done = () => { clearTimeout(timer); resolve(true); };
+            this.connectWaiters.push(done);
+        });
+    }
+    private connectWaiters: Array<() => void> = [];
+
     listToolDefs() {
         return this.toolDefs;
     }
@@ -83,6 +98,8 @@ export class LiveChannel {
                         established = true;
                         this.status = { broker: 'connected', channel: msg.channel };
                         this.connectAttempt = 0;
+                        for (const w of this.connectWaiters) w();
+                        this.connectWaiters = [];
                         console.error(`[live] broker 已连接（bridge=${msg.bridge} channel=${msg.channel ?? '无'}）`);
                         void this.refreshTools();
                         resolve();
@@ -117,6 +134,7 @@ export class LiveChannel {
                 // 仅已完成握手的连接断开才自愈重连；连接失败走 start() 循环，避免双循环
                 if (!established) return;
                 this.status.broker = 'disconnected';
+                this.triedSpawn = false; // 关键：broker 中途被杀后，重连 ECONNREFUSED 必须能重新拉起，否则本会话永远无法自愈
                 for (const [, p] of this.pending) p.reject(new Error('LIVE_NOT_CONNECTED: broker 连接断开'));
                 this.pending.clear();
                 setTimeout(() => {

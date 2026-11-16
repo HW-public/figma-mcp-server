@@ -580,6 +580,15 @@ if (childArg) {
     const broker = new Broker(config);
     process.on('SIGINT', () => broker.shutdown(130));
     process.on('SIGTERM', () => broker.shutdown(143));
+    // 崩溃留遗言：broker 此前为静默崩溃（无任何日志），此处记录堆栈后退出，
+    // 瘦客户端会自动拉起新实例（broker.log 里可查到死因）
+    process.on('uncaughtException', (e) => {
+        log(config, `未捕获异常（进程退出）: ${e.stack ?? e.message}`);
+        broker.shutdown(1);
+    });
+    process.on('unhandledRejection', (reason) => {
+        log(config, `未处理 Promise 拒绝: ${reason instanceof Error ? (reason.stack ?? reason.message) : String(reason)}`);
+    });
     broker.start().catch((e) => {
         console.error(`[broker] 启动失败: ${(e as Error).message}`);
         process.exit(1);

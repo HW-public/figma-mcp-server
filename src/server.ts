@@ -72,10 +72,11 @@ export function createServer(config: Config, live: LiveChannel): Server {
 
         // 批量执行：一次调用跑 N 个 live 操作（写大量节点时优先用它，减少往返与掉线窗口）
         if (name === 'batch_execute') {
-            if (!live.isBridgeConnected) {
+            // broker 被杀后有 ~3-8s 自愈窗口（重连+按需拉起），先等而不是立刻失败打断 AI
+            if (!live.isBridgeConnected && !await live.waitConnected(10_000)) {
                 return {
                     isError: true,
-                    content: [{ type: 'text' as const, text: 'LIVE_NOT_CONNECTED: broker 未连接' }],
+                    content: [{ type: 'text' as const, text: 'LIVE_NOT_CONNECTED: broker 未连接（10s 内未恢复；任意会话再调一次会自动拉起）' }],
                 };
             }
             const ops = (input.ops ?? []) as Array<{ name: string; args?: Record<string, unknown> }>;
@@ -88,6 +89,12 @@ export function createServer(config: Config, live: LiveChannel): Server {
 
         // Live 通道工具（figma-edit-mcp 代理）
         if (live.hasTool(name)) {
+            if (!live.isBridgeConnected && !await live.waitConnected(10_000)) {
+                return {
+                    isError: true,
+                    content: [{ type: 'text' as const, text: 'LIVE_NOT_CONNECTED: broker 未连接（10s 内未恢复；任意会话再调一次会自动拉起）' }],
+                };
+            }
             const result = await live.callTool(name, input);
             // figma-edit-mcp 返回的 content 结构直接透传
             return result as { content: unknown[]; isError?: boolean };
