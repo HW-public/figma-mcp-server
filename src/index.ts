@@ -9,11 +9,11 @@ async function main(): Promise<void> {
         console.error('[figma-mcp-server] 提示: 未配置 FIGMA_API_KEY，REST 通道工具将返回 REST_NOT_CONFIGURED');
     }
 
+    // 瘦客户端：连接常驻 broker（不在则按需拉起）。broker 是全机唯一 Figma 链路 owner，
+    // 多会话并发安全由 broker 侧 FIFO 队列保证
     const live = new LiveChannel(config, {
         onChannelPersist: (channel) => persistChannel(config.channelFile, channel),
     });
-    // live 通道异步拉起，但给 stdio 启动设 30s 上限：
-    // 慢机器/冷启动下不阻塞 MCP 握手，桥连上后工具自然出现
     const liveReady = live.start().catch((e) => {
         console.error(`[live] 启动异常: ${(e as Error).message}`);
     });

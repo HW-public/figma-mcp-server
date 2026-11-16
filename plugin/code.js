@@ -7075,6 +7075,8 @@ Processing annotation ${i + 1}/${annotations.length}:`,
           } else {
             updateConnectionStatus(false, \`Failed to connect. Is the MCP server running on port \${port}?\`);
           }
+          // \u975E\u624B\u52A8\u65AD\u5F00 \u2192 3 \u79D2\u540E\u81EA\u52A8\u91CD\u8FDE\uFF08\u9891\u9053\u7801\u5DF2\u6301\u4E45\u5316\uFF0C\u91CD\u8FDE\u5373\u6062\u590D\u539F\u9891\u9053\uFF09
+          scheduleAutoReconnect();
         };
 
         state.socket.onerror = (error) => {
@@ -7094,7 +7096,22 @@ Processing annotation ${i + 1}/${annotations.length}:`,
     }
 
     // Disconnect from websocket server
+    let manualDisconnect = false;
+    let autoReconnectTimer = null;
+
+    function scheduleAutoReconnect() {
+      if (manualDisconnect || autoReconnectTimer || state.connected) return;
+      autoReconnectTimer = setTimeout(() => {
+        autoReconnectTimer = null;
+        if (manualDisconnect || state.connected) return;
+        const port = state.serverPort || parseInt(portInput.value) || 3055;
+        updateConnectionStatus(false, "\u8FDE\u63A5\u5DF2\u65AD\u5F00\uFF0C\u81EA\u52A8\u91CD\u8FDE\u4E2D\u2026");
+        connectToServer(port);
+      }, 3000);
+    }
+
     function disconnectFromServer() {
+      manualDisconnect = true;
       clearPendingScopeRequest();
       if (state.socket) {
         state.socket.close();
@@ -7256,6 +7273,8 @@ Processing annotation ${i + 1}/${annotations.length}:`,
 
     // Connect to server
     connectButton.onclick = () => {
+      manualDisconnect = false;
+      if (autoReconnectTimer) { clearTimeout(autoReconnectTimer); autoReconnectTimer = null; }
       if (state.connected) {
         updateConnectionStatus(false, "\u65AD\u5F00\u4E2D\u2026");
         connectionStatus.className = "status info";

@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
   figma-mcp-server one-click installer (single-file bundle).
@@ -26,11 +26,11 @@
 param(
   [string]$InstallDir = $(if ($PSScriptRoot) { Join-Path $PSScriptRoot 'release' } else { Join-Path $env:USERPROFILE 'figma-mcp-server' }),
   [string]$DownloadUrl = 'https://github.com/HW-public/figma-mcp-server/releases/latest/download/index.mjs',
+  [string]$BrokerUrl = 'https://github.com/HW-public/figma-mcp-server/releases/latest/download/broker.mjs',
   [string]$EnvTemplateUrl = 'https://cdn.jsdelivr.net/gh/HW-public/figma-mcp-server@master/.env.example',
   [string]$PluginCodeUrl = 'https://github.com/HW-public/figma-mcp-server/releases/latest/download/code.js',
   [string]$PluginManifestUrl = 'https://github.com/HW-public/figma-mcp-server/releases/latest/download/manifest.json',
-  [string]$McpConfigPath = (Join-Path $env:USERPROFILE '.mcp.json'),
-  [string]$SettingsPath = (Join-Path $env:USERPROFILE '.claude\settings.local.json')
+  [string]$ClaudeConfigPath = (Join-Path $env:USERPROFILE '.claude.json')
 )
 
 $ErrorActionPreference = 'Stop'
@@ -60,13 +60,22 @@ $target = Join-Path $InstallDir 'index.mjs'
 
 # --- 1. Obtain the single-file bundle ------------------------------------------
 $localBundle = $(if ($PSScriptRoot) { Join-Path $PSScriptRoot 'dist\bundle\index.mjs' } else { $null })
+$localBroker = $(if ($PSScriptRoot) { Join-Path $PSScriptRoot 'dist\bundle\broker.mjs' } else { $null })
 if ($localBundle -and (Test-Path $localBundle)) {
-  Copy-Item $localBundle $target -Force
+  Copy-Item $localBundle (Join-Path $InstallDir 'index.mjs') -Force
   Write-Host "[ok] Copied index.mjs -> $InstallDir" -ForegroundColor Green
 } else {
   Write-Host "[..] Downloading bundle from $DownloadUrl"
-  Invoke-WebRequest -Uri $DownloadUrl -OutFile $target -UseBasicParsing
+  Invoke-WebRequest -Uri $DownloadUrl -OutFile (Join-Path $InstallDir 'index.mjs') -UseBasicParsing
   Write-Host "[ok] Downloaded index.mjs -> $InstallDir" -ForegroundColor Green
+}
+if ($localBroker -and (Test-Path $localBroker)) {
+  Copy-Item $localBroker (Join-Path $InstallDir 'broker.mjs') -Force
+  Write-Host "[ok] Copied broker.mjs -> $InstallDir" -ForegroundColor Green
+} else {
+  Write-Host "[..] Downloading broker from $BrokerUrl"
+  Invoke-WebRequest -Uri $BrokerUrl -OutFile (Join-Path $InstallDir 'broker.mjs') -UseBasicParsing
+  Write-Host "[ok] Downloaded broker.mjs -> $InstallDir" -ForegroundColor Green
 }
 
 # --- 1.5 Runtime dependency (figma-edit-mcp, spawned as child process) --------
@@ -156,50 +165,42 @@ if (-not (Test-Path $envFile)) {
   Write-Host "[ok] .env already exists, kept as-is" -ForegroundColor Green
 }
 
-# --- 3. Register in .mcp.json --------------------------------------------------
-$mcp = Read-JsonOrDefault $McpConfigPath ([pscustomobject]@{ mcpServers = [pscustomobject]@{} })
-if (-not $mcp.mcpServers) {
-  $mcp | Add-Member -Force -NotePropertyName mcpServers -NotePropertyValue ([pscustomobject]@{})
+# --- 3. Register in .claude.json（用户级，天然免启用，无需 settings.local.json）----
+# 注意：用 Node 做 JSON 合并而非 PowerShell ConvertFrom-Json ——
+# 用户 .claude.json 可能存在仅大小写不同的重复键（PS 会报错，Node 大小写敏感可正确处理）
+if (Test-Path $ClaudeConfigPath) {
+  Copy-Item $ClaudeConfigPath "$ClaudeConfigPath.bak" -Force
 }
 
-$entry = [pscustomobject]@{
+$entryJson = (@{
   command = 'node'
-  args    = @($target)
-}
+  args    = @((Join-Path $InstallDir 'index.mjs'))
+} | ConvertTo-Json -Depth 5 -Compress)
 
-if (Test-Path $McpConfigPath) {
-  Copy-Item $McpConfigPath "$McpConfigPath.bak" -Force
+$mergeJs = @'
+const fs = require('fs');
+const [cfgPath, name] = process.argv.slice(1);
+const entry = JSON.parse(process.env.FIGMA_MCP_ENTRY_JSON);
+let cfg = {};
+try {
+  const raw = fs.readFileSync(cfgPath, 'utf8');
+  if (raw.trim()) cfg = JSON.parse(raw);
+} catch (e) {
+  console.error('读取 ' + cfgPath + ' 失败: ' + e.message);
+  process.exit(1);
 }
+cfg.mcpServers = cfg.mcpServers || {};
+cfg.mcpServers[name] = entry;
+fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2));
+'@
 
-$servers = $mcp.mcpServers
-$existing = $servers.PSObject.Properties[$ServerName]
-if ($existing) {
-  $existing.Value = $entry
-} else {
-  $servers | Add-Member -NotePropertyName $ServerName -NotePropertyValue $entry
-}
-
-Write-JsonNoBom $McpConfigPath $mcp
-Write-Host "[ok] Registered $ServerName in $McpConfigPath (backup: $McpConfigPath.bak)" -ForegroundColor Green
-
-# --- 4. Enable in settings.local.json -------------------------------------------
-$settings = Read-JsonOrDefault $SettingsPath ([pscustomobject]@{})
-$enabled = @()
-if ($settings.enabledMcpjsonServers) {
-  $enabled = @($settings.enabledMcpjsonServers)
-}
-
-if ($enabled -notcontains $ServerName) {
-  if (Test-Path $SettingsPath) {
-    Copy-Item $SettingsPath "$SettingsPath.bak" -Force
-  }
-  $enabled += $ServerName
-  $settings | Add-Member -Force -NotePropertyName enabledMcpjsonServers -NotePropertyValue $enabled
-  Write-JsonNoBom $SettingsPath $settings
-  Write-Host "[ok] Enabled $ServerName in $SettingsPath (backup: $SettingsPath.bak)" -ForegroundColor Green
-} else {
-  Write-Host "[ok] $ServerName already enabled in settings.local.json" -ForegroundColor Green
-}
+# PS 5.1 向原生命令传含引号的参数会错误重引号，含引号的 entry 走环境变量传递
+$env:FIGMA_MCP_ENTRY_JSON = $entryJson
+& node -e $mergeJs $ClaudeConfigPath $ServerName
+$mergeExit = $LASTEXITCODE
+Remove-Item Env:\FIGMA_MCP_ENTRY_JSON
+if ($mergeExit -ne 0) { throw "注册写入 $ClaudeConfigPath 失败" }
+Write-Host "[ok] Registered $ServerName in $ClaudeConfigPath (backup: $ClaudeConfigPath.bak)" -ForegroundColor Green
 
 # --- 5. Reminders ----------------------------------------------------------------
 Write-Host ""

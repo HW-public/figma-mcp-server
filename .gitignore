@@ -4,3 +4,4 @@ dist/
 figma-assets/
 *.log
 .idea
+release/

@@ -515,6 +515,8 @@
           } else {
             updateConnectionStatus(false, `Failed to connect. Is the MCP server running on port ${port}?`);
           }
+          // 非手动断开 → 3 秒后自动重连（频道码已持久化，重连即恢复原频道）
+          scheduleAutoReconnect();
         };
 
         state.socket.onerror = (error) => {
@@ -534,7 +536,22 @@
     }
 
     // Disconnect from websocket server
+    let manualDisconnect = false;
+    let autoReconnectTimer = null;
+
+    function scheduleAutoReconnect() {
+      if (manualDisconnect || autoReconnectTimer || state.connected) return;
+      autoReconnectTimer = setTimeout(() => {
+        autoReconnectTimer = null;
+        if (manualDisconnect || state.connected) return;
+        const port = state.serverPort || parseInt(portInput.value) || 3055;
+        updateConnectionStatus(false, "连接已断开，自动重连中…");
+        connectToServer(port);
+      }, 3000);
+    }
+
     function disconnectFromServer() {
+      manualDisconnect = true;
       clearPendingScopeRequest();
       if (state.socket) {
         state.socket.close();
@@ -696,6 +713,8 @@
 
     // Connect to server
     connectButton.onclick = () => {
+      manualDisconnect = false;
+      if (autoReconnectTimer) { clearTimeout(autoReconnectTimer); autoReconnectTimer = null; }
       if (state.connected) {
         updateConnectionStatus(false, "断开中…");
         connectionStatus.className = "status info";

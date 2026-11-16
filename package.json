@@ -1,6 +1,6 @@
 {
   "name": "figma-mcp-server",
-  "version": "1.0.5",
+  "version": "1.0.7",
   "description": "Unified Figma MCP server: REST headless read + live plugin-bridge read/write",
   "type": "module",
   "main": "dist/index.js",
@@ -16,7 +16,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint src test",
     "lint:fix": "eslint src test --fix",
-    "bundle": "esbuild src/index.ts --bundle --platform=node --target=node20 --format=esm --outfile=dist/bundle/index.mjs --banner:js=\"import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);\" --log-level=warning",
+    "bundle": "esbuild src/index.ts --bundle --platform=node --target=node20 --format=esm --outfile=dist/bundle/index.mjs --banner:js=\"import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);\" --log-level=warning && esbuild src/broker/broker.ts --bundle --platform=node --target=node20 --format=esm --outfile=dist/bundle/broker.mjs --banner:js=\"import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);\" --log-level=warning",
     "release": "pnpm run build && pnpm run bundle",
     "smoke": "node test/smoke.mjs",
     "plugin:build": "node plugin/build.mjs",
