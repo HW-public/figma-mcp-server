@@ -40,11 +40,13 @@ export async function setFillColor(params: any) {
         throw new Error(`node_set_fill: '${node.name}' (type ${node.type}) has no 'fills' property to set a fill on.`);
     }
 
-    if (color && image) {
-        throw new Error("node_set_fill: provide exactly one of: a solid color (r,g,b[,a]), an image, or clear:true.");
+    // figma-mcp-server 定制：gradient 计入模式计数，否则 gradient-only 会在此被误拦（gradient 分支变死代码）
+    const fillModes = [color, image, gradient].filter(Boolean).length;
+    if (fillModes > 1) {
+        throw new Error("node_set_fill: provide exactly one of: a solid color (r,g,b[,a]), an image, a gradient, or clear:true.");
     }
-    if (!color && !image) {
-        throw new Error("node_set_fill: provide exactly one of: a solid color (r,g,b[,a]), an image, or clear:true.");
+    if (fillModes === 0) {
+        throw new Error("node_set_fill: provide exactly one of: a solid color (r,g,b[,a]), an image, a gradient, or clear:true.");
     }
 
     let paintStyle: any;

@@ -2532,11 +2532,12 @@ Nothing was deleted. Read each listed consumer's current state with node_info (n
     if (!("fills" in node)) {
       throw new Error(`node_set_fill: '${node.name}' (type ${node.type}) has no 'fills' property to set a fill on.`);
     }
-    if (color && image) {
-      throw new Error("node_set_fill: provide exactly one of: a solid color (r,g,b[,a]), an image, or clear:true.");
+    const fillModes = [color, image, gradient].filter(Boolean).length;
+    if (fillModes > 1) {
+      throw new Error("node_set_fill: provide exactly one of: a solid color (r,g,b[,a]), an image, a gradient, or clear:true.");
     }
-    if (!color && !image) {
-      throw new Error("node_set_fill: provide exactly one of: a solid color (r,g,b[,a]), an image, or clear:true.");
+    if (fillModes === 0) {
+      throw new Error("node_set_fill: provide exactly one of: a solid color (r,g,b[,a]), an image, a gradient, or clear:true.");
     }
     let paintStyle;
     if (color) {
