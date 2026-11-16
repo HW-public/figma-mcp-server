@@ -12,9 +12,9 @@
 import { createServer, type Socket } from 'node:net';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync, statSync, renameSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
-import { dirname } from 'node:path';
+import { dirname, join } from 'node:path';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { loadConfig, persistChannel, type Config } from '../config.js';
@@ -26,10 +26,23 @@ const APP_VERSION = (globalThis as Record<string, unknown>).__APP_VERSION__ as s
 const selfPath = fileURLToPath(import.meta.url);
 const VERSION = APP_VERSION;
 
+const LOG_ROTATE_BYTES = 5 * 1024 * 1024;
+
+/** 日志单文件轮转：超过 5MB 改名 .1（MCP 场景日志量小，单备份足够） */
+function rotateLogIfNeeded(file: string): void {
+    try {
+        if (statSync(file).size < LOG_ROTATE_BYTES) return;
+        const bak = `${file}.1`;
+        try { unlinkSync(bak); } catch { /* 不存在则忽略 */ }
+        renameSync(file, bak);
+    } catch { /* 文件不存在等，忽略 */ }
+}
+
 function log(config: Config, line: string): void {
     const stamp = new Date().toISOString();
     try {
         mkdirSync(dirname(config.brokerLogFile), { recursive: true });
+        rotateLogIfNeeded(config.brokerLogFile);
         appendFileSync(config.brokerLogFile, `[${stamp}] ${line}\n`);
     } catch { /* 日志失败不影响运行 */ }
     console.error(`[broker] ${line}`);
@@ -75,6 +88,7 @@ class Broker {
 
     async start(): Promise<void> {
         writeFileSync(this.config.brokerPidFile, String(process.pid));
+        log(this.config, `figma-mcp-broker v${VERSION} 启动（state: ${this.config.stateDir}）`);
 
         // 先抢端口再拉子进程：并发唤醒场景下，抢不到 3056 的实例必须空手退出，
         // 否则会产生孤儿 socket/child 抢占频道
@@ -91,6 +105,30 @@ class Broker {
         await this.spawnSocket();
         await this.connectBridge();
         this.startIdleTimer();
+        this.checkForUpdates();
+    }
+
+    /** 异步探测 GitHub 新版本（3s 超时，失败静默，不阻塞启动） */
+    private checkForUpdates(): void {
+        void (async () => {
+            try {
+                const res = await fetch('https://api.github.com/repos/HW-public/figma-mcp-server/releases/latest', {
+                    signal: AbortSignal.timeout(3000),
+                    headers: { 'User-Agent': 'figma-mcp-server' },
+                });
+                if (!res.ok) return;
+                const rel = await res.json() as { tag_name?: string; html_url?: string; published_at?: string };
+                const latest = String(rel.tag_name ?? '').replace(/^v/, '');
+                if (!latest || latest === VERSION) return;
+                writeFileSync(join(this.config.stateDir, 'update-available.json'), JSON.stringify({
+                    current: VERSION,
+                    latest,
+                    url: rel.html_url ?? '',
+                    publishedAt: rel.published_at ?? '',
+                }, null, 2));
+                log(this.config, `新版本可用: v${latest}（当前 v${VERSION}）→ 重跑 install.ps1 升级`);
+            } catch { /* 离线/超时静默跳过 */ }
+        })();
     }
 
     // ---- Figma 链路（socket + figma-edit-mcp child） ----
@@ -127,7 +165,12 @@ class Broker {
                     command: process.execPath,
                     // 子进程代码已 bundle 进本文件，spawn 自身 + argv 路由到 MCP server 入口
                     args: [selfPath, '--fe-child=server'],
-                    env: { ...process.env, FIGMA_MCP_CHANNEL_VERSION: VERSION },
+                    env: {
+                        ...process.env,
+                        FIGMA_MCP_CHANNEL_VERSION: VERSION,
+                        // server 子进程按此 env 找 socket 桥；不显式传会默认 3055 撞到现场桥
+                        FIGMA_EDIT_MCP_SOCKET_PORT: String(this.config.bridgePort),
+                    },
                 });
                 await this.mcpClient.connect(transport);
                 const listed = await this.mcpClient.listTools();

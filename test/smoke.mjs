@@ -1,22 +1,38 @@
-// 冒烟测试：spawn server（bundle）→ MCP 握手 → 工具枚举 → REST 错误路径 → 多客户端并发验证
+// 冒烟测试（环境隔离版）：独立端口 + 临时 state dir 拉起独立 broker，
+// 结果不受运行中的生产 broker 影响，CI 与本地输出确定一致。
 import { spawn } from 'node:child_process';
-import { existsSync, readFileSync, unlinkSync } from 'node:fs';
-import { connect } from 'node:net';
-import { homedir } from 'node:os';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { connect, createServer } from 'node:net';
+import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const bundleEntry = join(root, 'dist', 'bundle', 'index.mjs');
 const tscEntry = join(root, 'dist', 'index.js');
-const serverEntry = existsSync(bundleEntry) ? bundleEntry : tscEntry;
-const BROKER_PORT = 3056;
+const serverEntry = (await import('node:fs')).existsSync(bundleEntry) ? bundleEntry : tscEntry;
+
+/** 让 OS 分配空闲端口 */
+function freePort() {
+    return new Promise((resolve, reject) => {
+        const s = createServer().listen(0, '127.0.0.1', () => {
+            const port = s.address().port;
+            s.close(() => resolve(port));
+        });
+        s.on('error', reject);
+    });
+}
+
+const BROKER_PORT = await freePort();
+const BRIDGE_PORT = await freePort();
+const stateDir = mkdtempSync(join(tmpdir(), 'figma-mcp-smoke-'));
 
 const child = spawn(process.execPath, [serverEntry], {
     stdio: ['pipe', 'pipe', 'inherit'],
     env: {
         ...process.env,
-        FIGMA_EDIT_BRIDGE_PORT: '3055',
+        FIGMA_MCP_STATE_DIR: stateDir,
+        FIGMA_EDIT_BRIDGE_PORT: String(BRIDGE_PORT),
         FIGMA_MCP_BROKER_PORT: String(BROKER_PORT),
         FIGMA_MCP_BROKER_IDLE_EXIT_MS: '4000', // 冒烟后 broker 快速自退
     },
@@ -122,28 +138,33 @@ try {
     console.log(`REST 工具: ${['get_design_context', 'download_images'].filter((n) => names.includes(n)).join(', ')}`);
     const liveOnes = names.filter((n) => ['channel_join', 'page_info', 'create_frame', 'node_info'].includes(n));
     console.log(`Live 工具样例: ${liveOnes.join(', ') || '(未连接)'}`);
+    if (names.length !== 48) { console.log(`✘ 工具总数异常（期望 48）`); failed = true; }
 
     const callRes = await send('tools/call', {
         name: 'get_design_context',
         arguments: { fileKey: 'dummy' },
     });
     const text = JSON.stringify(callRes.result ?? callRes.error);
-    console.log(`未配 token 调用结果: ${text.includes('REST_NOT_CONFIGURED') ? '✔ 结构化错误符合预期' : '✘ 异常: ' + text.slice(0, 200)}`);
+    const ok = text.includes('REST_NOT_CONFIGURED');
+    console.log(`未配 token 调用结果: ${ok ? '✔ 结构化错误符合预期' : '✘ 异常: ' + text.slice(0, 200)}`);
+    if (!ok) failed = true;
 
-    // 多客户端：第二个 TCP 客户端直连 broker（此时 broker 已由 server 按需拉起）
-    const token = readFileSync(join(process.env.LOCALAPPDATA ?? homedir(), 'figma-mcp-server', 'broker.token'), 'utf-8').trim();
+    // 多客户端：第二个 TCP 客户端直连隔离 broker（broker 已由 server 按需拉起，token 在隔离 state dir）
+    const token = readFileSync(join(stateDir, 'broker.token'), 'utf-8').trim();
     const raw = await brokerCall(token, { type: 'tools/list' });
     const brokerToolCount = raw.tools?.length ?? 0;
-    console.log(`并发客户端直连 broker: ${brokerToolCount} 个 live 工具 ${brokerToolCount >= 45 ? '✔' : '✘ 数量异常'}`);
+    const countOk = brokerToolCount >= 45;
+    console.log(`并发客户端直连 broker: ${brokerToolCount} 个 live 工具 ${countOk ? '✔' : '✘ 数量异常'}`);
+    if (!countOk) failed = true;
 
-    console.log('SMOKE PASS');
+    console.log(failed ? 'SMOKE FAIL（断言未过）' : 'SMOKE PASS');
 } catch (e) {
     console.error('SMOKE FAIL:', e.message);
     failed = true;
 } finally {
     child.kill();
-    // 注意：不杀 broker —— pidfile 指向的可能是用户正在使用的生产 broker。
-    // smoke 自建的 broker 带有 FIGMA_MCP_BROKER_IDLE_EXIT_MS=4000，会自行闲置退出。
-    try { unlinkSync(join(homedir(), '.figma-mcp-server.lock')); } catch { /* ignore */ } // 旧锁文件残留清理
+    // broker 带 FIGMA_MCP_BROKER_IDLE_EXIT_MS=4000 会自行闲置退出；延迟清理临时 state dir
+    setTimeout(() => { try { rmSync(stateDir, { recursive: true, force: true }); } catch { /* ignore */ } }, 5000);
+    setTimeout(() => process.exit(failed ? 1 : 0), 100);
     process.exitCode = failed ? 1 : 0;
 }

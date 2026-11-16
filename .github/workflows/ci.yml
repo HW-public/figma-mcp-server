@@ -44,3 +44,8 @@ jobs:
 
       - name: Smoke test (MCP handshake + tool enumeration)
         run: pnpm run smoke
+
+      - name: Customizations guard（定制清单与源码一致，防上游整体覆盖丢定制）
+        run: |
+          pnpm run customizations
+          git diff --exit-code scripts/CUSTOMIZATIONS.md

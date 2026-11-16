@@ -1,5 +1,5 @@
 import { loadConfig, persistChannel } from './config.js';
-import { LiveChannel } from './live/child-client.js';
+import { LiveChannel } from './client/live.js';
 import { createServer, startStdioServer } from './server.js';
 
 async function main(): Promise<void> {

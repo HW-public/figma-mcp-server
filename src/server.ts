@@ -3,8 +3,8 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 
 const APP_VERSION = (globalThis as Record<string, unknown>).__APP_VERSION__ as string ?? '0.0.0-dev';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
-import type { LiveChannel } from './live/child-client.js';
-import { restToolDefs, makeRestHandlers } from './rest/tools.js';
+import type { LiveChannel } from './client/live.js';
+import { restToolDefs, makeRestHandlers } from './client/rest-tools.js';
 import type { Config } from './config.js';
 
 /** 组装 MCP server：REST 工具 + live 工具合并暴露，调用时按名字路由 */
@@ -16,6 +16,7 @@ export function createServer(config: Config, live: LiveChannel): Server {
     const restHandlers = makeRestHandlers(config);
 
     server.setRequestHandler(ListToolsRequestSchema, async () => {
+        if (live.isBridgeConnected) await live.ensureTools(); // broker 桥刚拉起时补一次同步，避免空表竞态
         const liveTools = live.isBridgeConnected
             ? [
                 ...live.listToolDefs().map((t) => ({

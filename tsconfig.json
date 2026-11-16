@@ -14,5 +14,5 @@
     "types": ["node"]
   },
   "include": ["src"],
-  "exclude": ["src/figma-edit-mcp"]
+  "exclude": ["src/tools", "src/protocol", "src/bridge"]
 }

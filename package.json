@@ -20,7 +20,10 @@
     "release": "pnpm run build && pnpm run bundle",
     "smoke": "node test/smoke.mjs",
     "plugin:build": "node plugin/build.mjs",
-    "plugin:typecheck": "tsc -p plugin/tsconfig.json --noEmit"
+    "plugin:typecheck": "tsc -p plugin/tsconfig.json --noEmit",
+    "customizations": "node scripts/list-customizations.mjs",
+    "release:check": "node scripts/release-check.mjs",
+    "sync:local": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev-sync.ps1"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.14.0",
@@ -29,6 +32,7 @@
   "devDependencies": {
     "@figma/plugin-typings": "^1.142.0",
     "@types/node": "^22.0.0",
+    "@types/ws": "^8.18.2",
     "esbuild": "^0.28.2",
     "eslint": "^10.15.0",
     "jimp": "^0.22.12",

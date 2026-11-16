@@ -14,14 +14,14 @@ const banner = "import { createRequire as __fe_cr } from 'node:module'; const re
 // __dirname/__filename 因 jimp 等 CJS 依赖在子进程运行时要用而 shim（tsup 默认开启，esbuild 没有）
 const shimsBanner = 'import { createRequire as __fe_cr } from \'node:module\'; import { fileURLToPath as __fe_f2p } from \'node:url\'; import { dirname as __fe_dp } from \'node:path\'; const require = __fe_cr(import.meta.url); const __filename = __fe_f2p(import.meta.url); const __dirname = __fe_dp(__filename);';
 const define = { 'globalThis.__APP_VERSION__': JSON.stringify(version) };
-const vendorSrc = join(root, 'src', 'figma-edit-mcp');
+
 
 // figma-child-* 是 ambient 声明（src/broker/child-entries.d.ts），构建时别名到 vendored 源码真实模块
 const aliasChildren = {
     name: 'alias-fe-children',
     setup(b) {
         b.onResolve({ filter: /^figma-child-(server|socket)$/ }, (args) => ({
-            path: join(vendorSrc, args.path === 'figma-child-server' ? 'mcp_server/server.ts' : 'socket.ts'),
+            path: join(root, 'src', 'bridge', args.path === 'figma-child-server' ? 'server.ts' : 'socket.ts'),
         }));
     },
 };

@@ -6,3 +6,5 @@ figma-assets/
 .idea
 release/
 vendor-dist/
+.omc/
+docs/
