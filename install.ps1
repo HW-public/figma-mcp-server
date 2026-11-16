@@ -195,6 +195,14 @@ Stop-Broker
 Switch-Current $versionDir
 Write-Host "[ok] current → versions\$targetVersion" -ForegroundColor Green
 
+# --- 注册前自检：current\index.mjs 必须真实可达（防 Junction 失效/资产缺失时注册坏路径） ---
+$probeEntry = Join-Path $InstallDir 'current\index.mjs'
+$probeBroker = Join-Path $InstallDir 'current\broker.mjs'
+if (-not (Test-Path $probeEntry) -or -not (Test-Path $probeBroker)) {
+  throw "注册自检失败：current 下缺少产物 ($probeEntry / $probeBroker)。Junction 或资产异常，已中止注册；安装目录保留待排查。"
+}
+Write-Host "[ok] 产物自检通过（index.mjs + broker.mjs 可达）" -ForegroundColor Green
+
 # --- .env（跨版本保留，不覆盖） ---------------------------------------------------
 $envFile = Join-Path $InstallDir '.env'
 if (-not (Test-Path $envFile)) {
