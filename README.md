@@ -87,7 +87,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -Command "iex ((New-Object System.Net.WebClient).DownloadString('https://cdn.jsdelivr.net/gh/HW-public/figma-mcp-server@master/install.ps1'))"
 ```
 
-安装脚本自动完成：拷贝/下载 `index.mjs` + `broker.mjs` → 拷贝内置（vendored，自维护）figma-edit-mcp server 端 → 拷贝插件 → 生成 .env → 注册进 **`~/.claude.json`**（用户级，天然免启用）→ 自动清理旧版 `~/.mcp.json` 残留。幂等可重跑，改配置前自动 `.bak` 备份。
+安装脚本自动完成：拷贝/下载 `index.mjs` + `broker.mjs` → 拷贝内置（vendored，自维护）figma-edit-mcp server 端 → 拷贝插件 → 生成 .env → 多客户端动态分发注册（自动探测 Claude Code / Cursor / Windsurf / Gemini CLI / Codex CLI 的 MCP 配置，存在的才注册）→ 自动清理旧版 `~/.mcp.json` 残留。幂等可重跑，改配置前自动 `.bak` 备份。
 
 **方式二：手动**
 

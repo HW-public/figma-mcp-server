@@ -27,7 +27,9 @@ param(
   [string]$Action = 'auto',
   [string]$Version = 'latest',
   [switch]$Prerelease,
-  [string]$ClaudeConfigPath = (Join-Path $env:USERPROFILE '.claude.json')
+  [string]$ClaudeConfigPath = (Join-Path $env:USERPROFILE '.claude.json'),
+  [string]$ProfileDir = $env:USERPROFILE,
+  [string[]]$Clients = @()   # 空 = 自动探测全部；否则只注册指定显示名（如 'Claude Code','Cursor'）
 )
 
 $ErrorActionPreference = 'Stop'
@@ -92,17 +94,124 @@ if ($repoMode) {
   }
 }
 
+# --- 客户端注册表 --------------------------------------------------------------
+# 自动探测各 AI 客户端的 MCP 配置文件，存在的才注册；$Clients 非空时只注册指定项。
+# JSON 客户端共用 Node 合并器（规避 PS 对仅大小写不同重复键的解析缺陷），TOML（Codex）单独处理。
+$script:McpEntryJson = $null
+$script:McpEntryPath = $null
+
+$mergeJs = @'
+const fs = require('fs');
+const [cfgPath, name, serversKey] = process.argv.slice(1);
+const entry = JSON.parse(process.env.FIGMA_MCP_ENTRY_JSON || 'null');
+let cfg = {};
+try {
+  const raw = fs.readFileSync(cfgPath, 'utf8');
+  if (raw.trim()) cfg = JSON.parse(raw);
+} catch (e) {
+  console.error('读取 ' + cfgPath + ' 失败: ' + e.message);
+  process.exit(1);
+}
+cfg[serversKey] = cfg[serversKey] || {};
+if (process.env.FIGMA_MCP_REMOVE === '1') {
+  delete cfg[serversKey][name];
+} else {
+  cfg[serversKey][name] = entry;
+}
+fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2));
+'@
+
+function Register-JsonClient([string]$displayName, [string]$cfgPath, [string]$serversKey, [bool]$remove) {
+  if (-not (Test-Path $cfgPath)) {
+    if (-not $remove) { Write-Host "[..] 未检测到 $displayName（$cfgPath），跳过" -ForegroundColor DarkGray }
+    return $false
+  }
+  try {
+    Copy-Item $cfgPath "$cfgPath.bak" -Force
+    $env:FIGMA_MCP_ENTRY_JSON = $script:McpEntryJson
+    if ($remove) { $env:FIGMA_MCP_REMOVE = '1' } else { Remove-Item Env:\FIGMA_MCP_REMOVE -ErrorAction SilentlyContinue }
+    & node -e $mergeJs $cfgPath $ServerName $serversKey
+    $code = $LASTEXITCODE
+    Remove-Item Env:\FIGMA_MCP_ENTRY_JSON
+    Remove-Item Env:\FIGMA_MCP_REMOVE -ErrorAction SilentlyContinue
+    if ($code -ne 0) {
+      Write-Host "[!!] $displayName 写入失败（原配置已 .bak 备份）: $cfgPath" -ForegroundColor Red
+      return $false
+    }
+    if ($remove) { Write-Host "[ok] 已从 $displayName 注销" -ForegroundColor Green }
+    else { Write-Host "[ok] 已注册 $displayName -> $cfgPath" -ForegroundColor Green }
+    return $true
+  } catch {
+    Write-Host "[!!] $displayName 异常: $($_.Exception.Message)" -ForegroundColor Red
+    return $false
+  }
+}
+
+# Codex CLI 用 TOML：节级 upsert [mcp_servers.<name>]（args 用正斜杠路径避免转义）
+function Register-TomlClient([string]$displayName, [string]$cfgPath, [bool]$remove) {
+  if (-not (Test-Path $cfgPath)) {
+    if (-not $remove) { Write-Host "[..] 未检测到 $displayName（$cfgPath），跳过" -ForegroundColor DarkGray }
+    return $false
+  }
+  try {
+    Copy-Item $cfgPath "$cfgPath.bak" -Force
+    $sectionHeader = "[mcp_servers.$ServerName]"
+    $tomlEntry = @"
+$sectionHeader
+command = "node"
+args = ["$($script:McpEntryPath -replace '\\','/')"]
+"@
+    $out = New-Object System.Collections.Generic.List[string]
+    $inOur = $false; $wrote = $false
+    foreach ($ln in (Get-Content $cfgPath)) {
+      if ($ln -match '^\[') {
+        if ($inOur) { continue }                    # 旧节整段丢弃
+        $inOur = ($ln -eq $sectionHeader)
+        if ($inOur) { continue }
+      }
+      $out.Add($ln)
+    }
+    if (-not $remove) { $out.AddRange([string[]](($tomlEntry -replace "`r", '') -split "`n")) }
+    [System.IO.File]::WriteAllLines($cfgPath, $out, (New-Object System.Text.UTF8Encoding($false)))
+    if ($remove) { Write-Host "[ok] 已从 $displayName 注销" -ForegroundColor Green }
+    else { Write-Host "[ok] 已注册 $displayName -> $cfgPath" -ForegroundColor Green }
+    return $true
+  } catch {
+    Write-Host "[!!] $displayName 异常: $($_.Exception.Message)" -ForegroundColor Red
+    return $false
+  }
+}
+
+# 注册表：新增客户端在此加一行即可。kind: json / toml
+function Get-ClientRegistry {
+  return @(
+    @{ Name = 'Claude Code'; Path = $ClaudeConfigPath;                      Key = 'mcpServers'; Kind = 'json'  },
+    @{ Name = 'Cursor';      Path = (Join-Path $ProfileDir '.cursor\mcp.json');               Key = 'mcpServers'; Kind = 'json'  },
+    @{ Name = 'Windsurf';    Path = (Join-Path $ProfileDir '.codeium\windsurf\mcp_config.json'); Key = 'mcpServers'; Kind = 'json'  },
+    @{ Name = 'Gemini CLI';  Path = (Join-Path $ProfileDir '.gemini\settings.json');          Key = 'mcpServers'; Kind = 'json'  },
+    @{ Name = 'Codex CLI';   Path = (Join-Path $ProfileDir '.codex\config.toml');             Key = '';           Kind = 'toml'  }
+  )
+}
+
+function Register-AllClients([bool]$remove) {
+  $registered = @()
+  foreach ($c in Get-ClientRegistry) {
+    if ($Clients.Count -gt 0 -and $Clients -notcontains $c.Name) { continue }
+    $ok = $false
+    if ($c.Kind -eq 'json') { $ok = Register-JsonClient $c.Name $c.Path $c.Key $remove }
+    else { $ok = Register-TomlClient $c.Name $c.Path $remove }
+    if ($ok) { $registered += $c.Name }
+  }
+  return $registered
+}
+
 # --- uninstall 早退 -----------------------------------------------------------
 if ($Action -eq 'uninstall') {
   Stop-Broker
-  if (Test-Path $ClaudeConfigPath) {
-    $cfg = Get-Content $ClaudeConfigPath -Raw | ConvertFrom-Json
-    if ($cfg.mcpServers -and $cfg.mcpServers.$ServerName) {
-      $cfg.mcpServers.PSObject.Properties.Remove($ServerName)
-      Write-JsonNoBom $ClaudeConfigPath $cfg
-      Write-Host "[ok] 已从 $ClaudeConfigPath 注销 $ServerName" -ForegroundColor Green
-    }
-  }
+  $script:McpEntryJson = '{}'
+  $script:McpEntryPath = (Join-Path $InstallDir 'current\index.mjs')
+  $unregistered = Register-AllClients $true
+  if ($unregistered.Count -eq 0) { Write-Host "[..] 未在任何客户端配置中找到 $ServerName" -ForegroundColor DarkGray }
   if (Test-Path $InstallDir) { Remove-Item $InstallDir -Recurse -Force }
   Write-Host "[ok] 已删除 $InstallDir。state 目录保留：$env:LOCALAPPDATA\figma-mcp-server（含频道码，重装免配对）" -ForegroundColor Green
   return
@@ -138,10 +247,7 @@ if ($Action -eq 'auto') {
     if ($answer -eq '' -or $answer -match '^[Yy]') { $Action = 'upgrade' }
     else { Write-Host '已取消。'; return }
   }
-  else { Write-Host "[ok] 已是最新版本 v$installedVersion"; return }
-}
-if ($Action -eq 'upgrade' -and $installedVersion -eq $targetVersion) {
-  Write-Host "[ok] 已是最新版本 v$targetVersion"; return
+  else { Write-Host "[ok] 已装 v$installedVersion 即目标版本 → 继续校验并补注册（幂等）" -ForegroundColor Green }
 }
 
 # --- rollback 校验 -------------------------------------------------------------
@@ -190,10 +296,16 @@ if ((Test-Path (Join-Path $InstallDir 'index.mjs')) -and -not (Test-Path (Join-P
   Write-Host "[ok] 旧平铺布局已迁移到 versions\legacy" -ForegroundColor Yellow
 }
 
-# --- 停旧 broker + 原子切换 ------------------------------------------------------
-Stop-Broker
-Switch-Current $versionDir
-Write-Host "[ok] current → versions\$targetVersion" -ForegroundColor Green
+# --- 停旧 broker + 原子切换（current 已指向目标时跳过，纯重注册/校验不打扰运行） ---
+$curLink = Join-Path $InstallDir 'current'
+$alreadyCurrent = (Test-Path $curLink) -and ((Get-Item $curLink -ErrorAction SilentlyContinue).Target[0] -eq $versionDir)
+if ($alreadyCurrent) {
+  Write-Host "[ok] current 已指向 versions\$targetVersion，无需切换" -ForegroundColor Green
+} else {
+  Stop-Broker
+  Switch-Current $versionDir
+  Write-Host "[ok] current → versions\$targetVersion" -ForegroundColor Green
+}
 
 # --- 注册前自检：current\index.mjs 必须真实可达（防 Junction 失效/资产缺失时注册坏路径） ---
 $probeEntry = Join-Path $InstallDir 'current\index.mjs'
@@ -216,34 +328,14 @@ if (-not (Test-Path $envFile)) {
   Write-Host "[ok] 已创建 $envFile -- 需要 REST 通道时填入 FIGMA_API_KEY" -ForegroundColor Yellow
 }
 
-# --- 注册 .claude.json（路径固定 current\index.mjs，升级无需重注册） --------------
-if (Test-Path $ClaudeConfigPath) { Copy-Item $ClaudeConfigPath "$ClaudeConfigPath.bak" -Force }
-$entryJson = (@{
-  command = 'node'
-  args    = @((Join-Path $InstallDir 'current\index.mjs'))
-} | ConvertTo-Json -Depth 5 -Compress)
-$mergeJs = @'
-const fs = require('fs');
-const [cfgPath, name] = process.argv.slice(1);
-const entry = JSON.parse(process.env.FIGMA_MCP_ENTRY_JSON);
-let cfg = {};
-try {
-  const raw = fs.readFileSync(cfgPath, 'utf8');
-  if (raw.trim()) cfg = JSON.parse(raw);
-} catch (e) {
-  console.error('读取 ' + cfgPath + ' 失败: ' + e.message);
-  process.exit(1);
+# --- 客户端动态分发注册（探测到配置才注册；路径固定 current\index.mjs，升级无需重注册） ---
+$script:McpEntryPath = Join-Path $InstallDir 'current\index.mjs'
+$script:McpEntryJson = (@{ command = 'node'; args = @($script:McpEntryPath) } | ConvertTo-Json -Depth 5 -Compress)
+$registeredClients = Register-AllClients $false
+if ($registeredClients.Count -eq 0) {
+  Write-Host "[!!] 警告：未检测到任何支持的 AI 客户端配置（Claude Code / Cursor / Windsurf / Gemini / Codex），已跳过注册。" -ForegroundColor Yellow
+  Write-Host "     先启动过一次对应客户端让其生成配置，再重跑本脚本即可自动补上。" -ForegroundColor Yellow
 }
-cfg.mcpServers = cfg.mcpServers || {};
-cfg.mcpServers[name] = entry;
-fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2));
-'@
-$env:FIGMA_MCP_ENTRY_JSON = $entryJson
-& node -e $mergeJs $ClaudeConfigPath $ServerName
-$mergeExit = $LASTEXITCODE
-Remove-Item Env:\FIGMA_MCP_ENTRY_JSON
-if ($mergeExit -ne 0) { throw "注册写入 $ClaudeConfigPath 失败" }
-Write-Host "[ok] 已注册 $ServerName -> $ClaudeConfigPath (current\index.mjs)" -ForegroundColor Green
 
 # --- 清理旧版本（保留最近 $KeepVersions 个） --------------------------------------
 $allVersions = Get-ChildItem $versionsDir -Directory | Sort-Object -Descending {
