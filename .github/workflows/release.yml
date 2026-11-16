@@ -1,0 +1,66 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.25.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint & typecheck
+        run: |
+          pnpm run lint
+          pnpm run typecheck
+
+      - name: Build (tsc → dist/，smoke 依赖 dist/index.js)
+        run: pnpm run build
+
+      - name: Bundle single-file output
+        run: pnpm run bundle
+
+      - name: Build self-contained plugin
+        run: pnpm run plugin:build
+
+      - name: Smoke test before release
+        shell: pwsh
+        run: pnpm run smoke 2>&1 | Tee-Object -FilePath smoke.log
+
+      - name: Upload smoke log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-log
+          path: smoke.log
+          retention-days: 7
+
+      - name: Create GitHub Release with bundle + plugin
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          $tag = $env:GITHUB_REF_NAME
+          gh release create $tag `
+            --title "figma-mcp-server $tag" `
+            --generate-notes `
+            "dist/bundle/index.mjs#index.mjs" `
+            "plugin/code.js#code.js" `
+            "plugin/manifest.json#manifest.json"
