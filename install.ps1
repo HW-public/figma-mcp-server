@@ -182,14 +182,69 @@ args = ["$($script:McpEntryPath -replace '\\','/')"]
   }
 }
 
-# 注册表：新增客户端在此加一行即可。kind: json / toml
+# OpenCode 用独立 JSON 结构：{ "mcp": { "<name>": { "type": "local", "command": ["node", "<path>"] } } }
+$mergeJsOpencode = @'
+const fs = require('fs');
+const [cfgPath, name] = process.argv.slice(1);
+let cfg = {};
+try {
+  const raw = fs.readFileSync(cfgPath, 'utf8');
+  if (raw.trim()) cfg = JSON.parse(raw);
+} catch (e) {
+  console.error('读取 ' + cfgPath + ' 失败: ' + e.message);
+  process.exit(1);
+}
+cfg.mcp = cfg.mcp || {};
+if (process.env.FIGMA_MCP_REMOVE === '1') {
+  delete cfg.mcp[name];
+} else {
+  cfg.mcp[name] = { type: 'local', command: ['node', process.env.FIGMA_MCP_OPENCODE_PATH] };
+}
+fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2));
+'@
+
+function Register-OpencodeClient([string]$displayName, [string]$cfgPath, [bool]$remove) {
+  if (-not (Test-Path $cfgPath)) {
+    if (-not $remove) { Write-Host "[..] 未检测到 $displayName（$cfgPath），跳过" -ForegroundColor DarkGray }
+    return $false
+  }
+  try {
+    Copy-Item $cfgPath "$cfgPath.bak" -Force
+    $env:FIGMA_MCP_OPENCODE_PATH = $script:McpEntryPath
+    if ($remove) { $env:FIGMA_MCP_REMOVE = '1' } else { Remove-Item Env:\FIGMA_MCP_REMOVE -ErrorAction SilentlyContinue }
+    & node -e $mergeJsOpencode $cfgPath $ServerName
+    $code = $LASTEXITCODE
+    Remove-Item Env:\FIGMA_MCP_OPENCODE_PATH
+    Remove-Item Env:\FIGMA_MCP_REMOVE -ErrorAction SilentlyContinue
+    if ($code -ne 0) {
+      Write-Host "[!!] $displayName 写入失败（原配置已 .bak 备份）: $cfgPath" -ForegroundColor Red
+      return $false
+    }
+    if ($remove) { Write-Host "[ok] 已从 $displayName 注销" -ForegroundColor Green }
+    else { Write-Host "[ok] 已注册 $displayName -> $cfgPath" -ForegroundColor Green }
+    return $true
+  } catch {
+    Write-Host "[!!] $displayName 异常: $($_.Exception.Message)" -ForegroundColor Red
+    return $false
+  }
+}
+
+# 注册表：新增客户端在此加一行即可。kind: json / toml / opencode
+# 未收录（需配置样例确认 schema）：Hermes (~/.hermes/config.yaml, YAML)、DeepSeek Harness (~/.dsh/profiles/*/cordis.patch.yml, 多 profile YAML)
 function Get-ClientRegistry {
   return @(
-    @{ Name = 'Claude Code'; Path = $ClaudeConfigPath;                      Key = 'mcpServers'; Kind = 'json'  },
-    @{ Name = 'Cursor';      Path = (Join-Path $ProfileDir '.cursor\mcp.json');               Key = 'mcpServers'; Kind = 'json'  },
-    @{ Name = 'Windsurf';    Path = (Join-Path $ProfileDir '.codeium\windsurf\mcp_config.json'); Key = 'mcpServers'; Kind = 'json'  },
-    @{ Name = 'Gemini CLI';  Path = (Join-Path $ProfileDir '.gemini\settings.json');          Key = 'mcpServers'; Kind = 'json'  },
-    @{ Name = 'Codex CLI';   Path = (Join-Path $ProfileDir '.codex\config.toml');             Key = '';           Kind = 'toml'  }
+    @{ Name = 'Claude Code';    Path = $ClaudeConfigPath;                                        Key = 'mcpServers'; Kind = 'json'     },
+    @{ Name = 'Cursor';         Path = (Join-Path $ProfileDir '.cursor\mcp.json');                 Key = 'mcpServers'; Kind = 'json'     },
+    @{ Name = 'Windsurf';       Path = (Join-Path $ProfileDir '.codeium\windsurf\mcp_config.json'); Key = 'mcpServers'; Kind = 'json'    },
+    @{ Name = 'Gemini CLI';     Path = (Join-Path $ProfileDir '.gemini\settings.json');            Key = 'mcpServers'; Kind = 'json'     },
+    @{ Name = 'Codex CLI';      Path = (Join-Path $ProfileDir '.codex\config.toml');               Key = '';           Kind = 'toml'     },
+    @{ Name = 'Grok Build';     Path = (Join-Path $ProfileDir '.grok\config.toml');                Key = '';           Kind = 'toml'     },
+    @{ Name = 'OpenCode';       Path = (Join-Path $ProfileDir '.config\opencode\opencode.json');   Key = 'mcp';        Kind = 'opencode' },
+    @{ Name = 'Pi';             Path = (Join-Path $ProfileDir '.pi\agent\mcp.json');               Key = 'mcpServers'; Kind = 'json'     },
+    @{ Name = 'MiniMax Code';   Path = (Join-Path $ProfileDir '.minimax\mcp.json');               Key = 'mcpServers'; Kind = 'json'     },
+    @{ Name = 'Kimi Code';      Path = (Join-Path $ProfileDir '.kimi-code\mcp.json');             Key = 'mcpServers'; Kind = 'json'     },
+    @{ Name = 'Antigravity';    Path = (Join-Path $ProfileDir '.gemini\config\mcp_config.json');   Key = 'mcpServers'; Kind = 'json'     },
+    @{ Name = 'Oh My Pi';       Path = (Join-Path $ProfileDir '.omp\agent\mcp.json');              Key = 'mcpServers'; Kind = 'json'     }
   )
 }
 
@@ -199,7 +254,8 @@ function Register-AllClients([bool]$remove) {
     if ($Clients.Count -gt 0 -and $Clients -notcontains $c.Name) { continue }
     $ok = $false
     if ($c.Kind -eq 'json') { $ok = Register-JsonClient $c.Name $c.Path $c.Key $remove }
-    else { $ok = Register-TomlClient $c.Name $c.Path $remove }
+    elseif ($c.Kind -eq 'toml') { $ok = Register-TomlClient $c.Name $c.Path $remove }
+    else { $ok = Register-OpencodeClient $c.Name $c.Path $remove }
     if ($ok) { $registered += $c.Name }
   }
   return $registered
