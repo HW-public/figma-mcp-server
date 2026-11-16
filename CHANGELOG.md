@@ -4,7 +4,7 @@
 
 ## [Unreleased]
 
-## [1.0.8] - 待发布
+## [1.0.1] - 待发布
 
 ### Added
 - variable_manage 新增 ADD_MODE action（多 mode 变量集合）
@@ -18,15 +18,7 @@
 - 更新可用提示（broker 启动异步探测 GitHub latest）
 
 ### Changed
-- figma-edit-mcp server 端源码并入主工程 src/figma-edit-mcp（上游基线 v2.3.3，MIT），7 个运行时补丁源码化，ensureFigmaEditPatched 机制拆除
+- 按职责五层架构重组，figma-edit-mcp server 端源码并入 src/bridge、src/tools、src/protocol（上游基线 v2.3.3，MIT），7 个运行时补丁源码化，ensureFigmaEditPatched 机制拆除
 - 子进程改 --fe-child 路由：broker.mjs 单文件内含三套代码，分发物只剩 index.mjs + broker.mjs
 - serverVersion 改 env（FIGMA_MCP_CHANNEL_VERSION）注入，发版 bump 零改动
 - 版本单一来源：package.json 一处改，bundle/plugin 三产物注入
-
-## [1.0.7] - 2026-11-14
-
-### Added
-- 首个公开发布：REST 无头读通道（get_design_context / download_images）+ live 插件桥写通道（45 工具）
-- broker 守护进程：多会话并发 FIFO 串行、频道持久化、闲置自退、按需拉起
-- 单文件分发 + install.ps1 一键安装 + Figma 插件（code.js + manifest.json）
-- 多 Claude 会话并发读写零冲突

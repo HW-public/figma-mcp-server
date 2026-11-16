@@ -2,22 +2,62 @@
 
 统一 Figma MCP server：**REST 无头读** + **插件桥实时读写** 双通道，工具自动路由、互为降级。
 
-## 架构
+## 架构设计
+
+### 全景图
 
 ```
-Claude 会话 A ─┐
-Claude 会话 B ─┼─ TCP 127.0.0.1:3056（瘦客户端）──▶ broker 守护进程（全机唯一）
-Claude 会话 C ─┘                                        │
-                                                socket :3055（唯一）
-                                                figma-edit-mcp child（唯一）
-                                                channel 0e5z（唯一，持久化自动 join）
-                                                            │
-                                                Figma 插件（唯一）
+┌─ 会话侧（每个 Claude 会话各一个进程，Claude Code 正常 spawn） ─────────────┐
+│                                                                            │
+│  index.ts ──▶ server.ts ──▶ 工具路由                                        │
+│    initialize/tools-list/call               ├─ live 写/读 ──┐              │
+│         ▲                                   └─ REST 无头读 ─┤              │
+│         │  stdio (MCP 协议)                                 ▼              │
+│  Claude Code ◀──────────────────────  client/（会话通道）                    │
+│                                        ├─ live.ts   瘦客户端（TCP 分帧）    │
+│                                        └─ rest-*.ts HTTPS → Figma REST API │
+└────────────────────────────────────────────────────────────────────────────┘
+                      │ client/live.ts 按需拉起 + TCP 127.0.0.1:3056
+                      ▼
+┌─ broker/（进程编排，全机唯一守护进程） ──────────────────────────────────────┐
+│  端口抢占 → spawn 子进程对 → FIFO 串行队列 → 闲置自退 / 被杀自愈              │
+│      │ spawn 自身 + --fe-child 路由（子进程代码已打进 broker.mjs）           │
+      ▼
+┌─ bridge/（插件桥进程对，全机唯一） ─────────────────────────────────────────┐
+│  server.ts（MCP child，stdio）──注册──▶ tools/（45 个 live 工具 schema）     │
+│  socket.ts（WS 桥 :3055）──频道握手──▶ Figma 插件（plugin/，Figma 沙箱）     │
+│  client.ts / logger.ts / resources.ts / utils.ts / imageResize.ts / cli.ts │
+└────────────────────────────────────────────────────────────────────────────┘
+        protocol/ = 频道协议 + 错误码 + 节点类型 + 版本（bridge/tools 共用）
 ```
 
-- **多会话并发安全**：broker 内 FIFO 互斥队列串行执行所有工具调用（画布单写者语义，顺序一致性）；客户端断开自动清理其未执行的调用
-- **broker 生命周期**：首个会话按需 detached 拉起（无需 hook/开机自启/手动）→ 无客户端闲置 30 分钟自退 → 被杀后任意会话下次调用自愈
-- 每个 Claude 会话仍由 Claude Code 正常 spawn 瘦客户端（command 注册不变），REST 通道（无头读/批量导切图）在各会话内独立工作
+### 分层职责
+
+| 层 | 目录 | 职责 | 实例数 |
+|---|---|---|---|
+| 入口 | `index.ts` `server.ts` `config.ts` | 每会话 MCP server 组装、双通道路由、env 配置 | 每会话 1 |
+| 会话通道 | `client/` | live 瘦客户端（broker 通信）+ REST 读通道（Figma API） | 每会话 1 |
+| 进程编排 | `broker/` | 守护进程：端口抢占、子进程生命周期、FIFO 互斥队列、频道持久化、工具表推送、更新探测 | 全机 1 |
+| 插件桥 | `bridge/` | 连接 Figma 插件的子进程对（MCP child + WS 桥）及其支撑模块 | 全机 1 对 |
+| 工具层 | `tools/` | 45 个 live 工具的 zod schema 定义（bridge/server.ts 注册） | — |
+| 协议层 | `protocol/` | 频道握手协议、错误码、节点类型、版本常量（多方共用，无依赖） | — |
+| 插件端 | `plugin/` | Figma 沙箱内运行的插件（UI/频道卡/handler），独立运行时 | Figma 内 1 |
+
+依赖单向无环：`入口 → client → broker`；`bridge → tools/protocol`；`protocol` 不依赖任何层。
+
+### 关键机制
+
+- **多会话并发安全（画布单写者）**：broker 内 FIFO 互斥队列串行执行所有工具调用，顺序一致；客户端断开自动清理其未执行的调用
+- **broker 生命周期**：首个会话按需 detached 拉起（无需 hook/开机自启）→ 无客户端闲置 30 分钟自退 → 被杀后任意会话下次调用自愈；启动先抢 3056 端口再拉子进程，并发唤醒的败者空手退出，杜绝孤儿抢占频道
+- **单文件进程模型**：bridge 两套代码由 `scripts/bundle.mjs` 一并打进 broker.mjs，broker 以 `--fe-child=server|socket` spawn 自身完成路由——分发物只有 `index.mjs` + `broker.mjs`
+- **版本握手**：broker spawn 子进程时经 env 注入构建版本，频道握手 serverVersion 与插件同源比对，不一致即 VERSION_MISMATCH 拒连
+- **工具表推送**：broker 在客户端认证时和桥就绪时主动推送工具表，瘦客户端不会停留在空表（消除启动竞态）
+- **插件桥双进程**：socket.ts 持有 WS 桥（:3055，插件唯一接入点），server.ts 是 MCP child（stdio），两者经 WS 中继命令/回执，崩溃由 broker 重拉
+
+### 状态与配置
+
+- 运行状态集中 `%LOCALAPPDATA%\figma-mcp-server\`（log 5MB 轮转 / pid / token / channel.json / update-available.json），与安装目录解耦
+- 全部端口与路径 env 可覆盖（`FIGMA_MCP_BROKER_PORT` / `FIGMA_EDIT_BRIDGE_PORT` / `FIGMA_MCP_STATE_DIR` / `FIGMA_MCP_BROKER_IDLE_EXIT_MS`），测试与多实例友好
 
 ## Figma 插件（随本项目自带，单文件分发）
 
@@ -142,10 +182,13 @@ pnpm release    # build + esbuild 单文件 bundle（dist/bundle/index.mjs）
 Release 工作流；`CHANGELOG.md` 维护纪律见 Keep a Changelog。上游升级流程见
 定制清单 `pnpm run customizations`（升级 runbook 见本地 .omc/UPSTREAM-UPGRADE.md）。
 
-**自维护组件**：figma-edit-mcp server 端源码已并入主工程 `src/figma-edit-mcp/`（上游基线 2.3.3，MIT，
-升级上游 = 覆盖源码后把我们的定制 diff rebase 过去）。子进程代码由 `scripts/bundle.mjs` 一并打进
-broker.mjs，broker 以 `--fe-child=server|socket` spawn 自身完成路由——无任何独立产物，分发物只有
-`index.mjs` + `broker.mjs` 两个文件。Figma 插件端定制在 `plugin/`（Figma 必须从文件导入，无法内嵌）。
+**自维护组件**：figma-edit-mcp server 端源码已并入主工程，按职责分布在 `src/bridge/`（插件桥进程对）、
+`src/tools/`（45 工具 schema）、`src/protocol/`（频道协议）（上游基线 2.3.3，MIT，LICENSE 在仓库根；
+定制以 `// figma-mcp-server 定制` 标记，清单 `pnpm run customizations` 生成
+`scripts/CUSTOMIZATIONS.md` 并受 CI 护栏保护；升级 runbook 见本地 `.omc/UPSTREAM-UPGRADE.md`）。
+子进程代码由 `scripts/bundle.mjs` 一并打进 broker.mjs，broker 以 `--fe-child=server|socket` spawn
+自身完成路由——无任何独立产物，分发物只有 `index.mjs` + `broker.mjs` 两个文件。
+Figma 插件端定制在 `plugin/`（Figma 必须从文件导入，无法内嵌）。
 
 ## 已知限制
 

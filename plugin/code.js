@@ -6661,959 +6661,959 @@ Processing annotation ${i + 1}/${annotations.length}:`,
     assertNotLocked(parent);
     assertNotInstanceParent(parent, "appended to");
   }
-  var PLUGIN_VERSION = true ? "1.0.7" : "unknown";
-  figma.showUI(`<!DOCTYPE html>
-<html lang="zh-CN">
-
-<head>
-  <meta charset="utf-8" />
-  <style>
-    :root {
-      --bg: #ffffff;
-      --text: #1f2328;
-      --text-2: #6b7280;
-      --text-3: #9ca3af;
-      --border: #e5e7eb;
-      --fill: #f6f7f8;
-      --fill-2: #eef1f4;
-      --primary: #18a0fb;
-      --primary-hover: #0d8ee0;
-      --primary-soft: #eaf5fe;
-      --green: #1a7f37;
-      --green-bg: #e6f6ec;
-      --red: #c0392b;
-      --radius: 8px;
-    }
-
-    * { box-sizing: border-box; }
-
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
-        "Microsoft YaHei", Roboto, Helvetica, Arial, sans-serif;
-      margin: 0;
-      padding: 16px;
-      color: var(--text);
-      background: var(--bg);
-      font-size: 13px;
-      line-height: 1.5;
-    }
-
-    .container { position: relative; display: flex; flex-direction: column; gap: 14px; }
-
-    /* ---- \u72B6\u6001\u6A2A\u5E45 ---- */
-    .status {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 10px 12px;
-      border-radius: 10px;
-      font-size: 13px;
-      font-weight: 600;
-      margin: 0;
-    }
-    .status::before {
-      content: "";
-      width: 8px; height: 8px;
-      border-radius: 50%;
-      background: currentColor;
-      flex: none;
-    }
-    .status.connected { background: var(--green-bg); color: var(--green); }
-    .status.disconnected { background: var(--fill-2); color: var(--text-2); }
-    .status.info { background: var(--primary-soft); color: var(--primary); }
-
-    /* ---- \u9891\u9053\u5361 ---- */
-    .channel-card {
-      padding: 12px;
-      background: var(--primary-soft);
-      border: 1px solid #d6e8fa;
-      border-radius: 12px;
-    }
-    .channel-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
-    .channel-title { font-size: 12px; color: var(--text-2); font-weight: 500; }
-    .channel-badge {
-      padding: 2px 10px; border-radius: 999px;
-      font-size: 11px; font-weight: 600;
-      background: var(--fill-2); color: var(--text-2);
-    }
-    .channel-badge.connected { background: #d7f0dd; color: var(--green); }
-    .channel-row { display: flex; align-items: stretch; gap: 8px; }
-    .channel-code {
-      flex: 1;
-      display: flex; align-items: center; justify-content: center;
-      font-family: Consolas, Menlo, monospace;
-      font-size: 20px; font-weight: 700; letter-spacing: 6px;
-      color: var(--primary); background: #ffffff;
-      border: 1px solid #d6e8fa; border-radius: var(--radius);
-      padding: 8px 10px; user-select: all; min-height: 40px;
-    }
-    .channel-code.empty { color: var(--text-3); font-size: 12px; letter-spacing: 1px; font-weight: 400; }
-    .channel-hint { font-size: 11px; color: var(--text-3); margin-top: 8px; }
-
-    /* ---- \u901A\u7528\u63A7\u4EF6 ---- */
-    .section { display: flex; flex-direction: column; gap: 6px; }
-    .section > label {
-      font-size: 12px; font-weight: 600; color: var(--text);
-      display: flex; align-items: baseline; justify-content: space-between;
-      margin: 0;
-    }
-    .label-hint { font-size: 11px; font-weight: 400; color: var(--text-3); }
-
-    .input-row { display: flex; gap: 8px; align-items: stretch; }
-    input[type="text"], input[type="number"], input:not([type]) {
-      flex: 1; min-width: 0;
-      border: 1px solid var(--border); border-radius: var(--radius);
-      padding: 8px 10px; margin: 0;
-      font-size: 13px; background: var(--fill); color: var(--text);
-      transition: border-color 0.15s, background 0.15s;
-    }
-    input:focus { outline: none; border-color: var(--primary); background: #ffffff; }
-    input:disabled { opacity: 0.6; cursor: not-allowed; }
-    input[type="checkbox"] { width: auto; cursor: pointer; accent-color: var(--primary); }
-
-    button {
-      border: none; border-radius: var(--radius);
-      padding: 8px 14px; margin: 0;
-      font-size: 13px; font-weight: 600;
-      cursor: pointer; transition: background-color 0.15s;
-      white-space: nowrap;
-    }
-    button.primary { background: var(--primary); color: #ffffff; }
-    button.primary:hover { background: var(--primary-hover); }
-    button.primary:disabled { background: #b9dff9; cursor: not-allowed; }
-    button.secondary { background: var(--fill-2); color: var(--text); }
-    button.secondary:hover { background: #e2e6ea; }
-    button:disabled { cursor: not-allowed; opacity: 0.6; }
-    button.btn-ghost {
-      background: #ffffff; border: 1px solid var(--border); color: var(--text-2);
-      padding: 8px 10px;
-    }
-    button.btn-ghost:hover:not(:disabled) { background: var(--fill); color: var(--text); }
-    button svg { pointer-events: none; display: block; }
-
-    .scope-status { font-size: 11px; display: none; }
-
-    .check-row { display: flex; flex-direction: column; gap: 6px; margin-top: 2px; }
-    .check-row label {
-      display: flex; align-items: center; gap: 8px;
-      font-size: 12px; font-weight: 400; color: var(--text-2);
-      cursor: pointer; margin: 0;
-    }
-
-    /* ---- \u8FDB\u5EA6 ---- */
-    .progress-panel {
-      padding: 10px 12px;
-      background: var(--fill); border: 1px solid var(--border); border-radius: 10px;
-      display: flex; flex-direction: column; gap: 6px;
-    }
-    .progress-panel h2 { font-size: 12px; margin: 0; color: var(--text); }
-    #progress-message { font-size: 12px; color: var(--text-2); }
-    .progress-track { width: 100%; background: var(--fill-2); border-radius: 999px; height: 6px; overflow: hidden; }
-    #progress-bar { height: 100%; background: var(--primary); border-radius: 999px; transition: width 0.3s; }
-    .progress-meta { display: flex; justify-content: space-between; font-size: 11px; color: var(--text-3); }
-
-    /* ---- \u6298\u53E0\u6761 / \u60AC\u6D6E\u94AE / \u6C14\u6CE1 ---- */
-    #collapsed-bar {
-      display: none; align-items: center; justify-content: space-between;
-      padding: 6px 10px; background: var(--fill); border-top: 1px solid var(--border);
-      user-select: none;
-    }
-    #collapsed-bar .bar-title { font-size: 11px; color: var(--text-3); }
-    #restore-btn {
-      width: 24px; height: 24px; padding: 0;
-      background: transparent; border: 1px solid var(--border); border-radius: 6px;
-      color: var(--text-3); font-size: 13px; line-height: 1; cursor: pointer;
-    }
-    #restore-btn:hover { color: var(--text); background: var(--fill-2); }
-
-    .minimize-fab {
-      position: absolute; top: -4px; right: -4px; z-index: 10;
-      width: 26px; height: 26px; padding: 0;
-      background: var(--fill); border: 1px solid var(--border); border-radius: 8px;
-      color: var(--text-3); font-size: 15px; line-height: 1; cursor: pointer;
-    }
-    .minimize-fab:hover { color: var(--text); background: var(--fill-2); }
-
-    .toast {
-      position: fixed; bottom: 16px; left: 50%;
-      transform: translateX(-50%);
-      background: #1f2328; color: #ffffff;
-      padding: 8px 16px; border-radius: 999px;
-      font-size: 12px;
-      opacity: 0; transition: opacity 0.3s;
-      pointer-events: none; z-index: 1000;
-    }
-    .toast.show { opacity: 1; }
-
-    .hidden { display: none !important; }
-    body.minimized { padding: 0; overflow: hidden; }
-    body.minimized .container { display: none; }
-    body.minimized #collapsed-bar {
-      display: flex;
-      height: 100vh;
-      align-items: center;
-      gap: 8px;
-      padding: 0 10px;
-    }
-  </style>
-</head>
-
-<body>
-  <div class="container">
-    <button id="minimize-btn" class="minimize-fab" title="\u6700\u5C0F\u5316\u7A97\u53E3">\u2013</button>
-
-    <div id="connection-status" class="status disconnected">\u672A\u8FDE\u63A5 MCP \u670D\u52A1</div>
-
-    <div class="channel-card" id="channel-card">
-      <div class="channel-head">
-        <span class="channel-title">\u9891\u9053\u7801</span>
-        <span class="channel-badge" id="channel-badge">\u672A\u8FDE\u63A5</span>
-      </div>
-      <div class="channel-row">
-        <code class="channel-code empty" id="channel-code">\u8FDE\u63A5\u540E\u663E\u793A</code>
-        <button class="btn-ghost" id="btn-copy-channel" title="\u590D\u5236\u9891\u9053\u7801" disabled>\u590D\u5236</button>
-      </div>
-      <div class="channel-hint">\u9996\u6B21\u8FDE\u63A5\u540E\u56FA\u5B9A\u4E0D\u53D8\uFF0CClaude \u7AEF\u81EA\u52A8\u52A0\u5165</div>
-    </div>
-
-    <div class="section">
-      <label for="scope-link">\u7F16\u8F91\u8303\u56F4 <span class="label-hint">\u7559\u7A7A\u4E3A\u53EA\u8BFB\u6A21\u5F0F</span></label>
-      <div class="input-row">
-        <input type="text" id="scope-link" placeholder="\u7C98\u8D34 Figma \u8282\u70B9\u6216\u753B\u677F\u94FE\u63A5" />
-        <button id="btn-copy-link" class="btn-ghost" disabled title="\u590D\u5236\u5F53\u524D\u9009\u4E2D\u9879\u94FE\u63A5">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-            stroke-linecap="round" stroke-linejoin="round">
-            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-          </svg>
-        </button>
-      </div>
-      <div id="scope-status" class="scope-status"></div>
-      <div class="check-row">
-        <label><input type="checkbox" id="allow-edit-variable" />\u5141\u8BB8 AI \u4FEE\u6539\u53D8\u91CF</label>
-        <label><input type="checkbox" id="allow-edit-style" />\u5141\u8BB8 AI \u4FEE\u6539\u6837\u5F0F</label>
-      </div>
-    </div>
-
-    <div class="section">
-      <label for="port">\u670D\u52A1\u7AEF\u53E3 <span class="label-hint">WebSocket</span></label>
-      <div class="input-row">
-        <input type="number" id="port" placeholder="3055" value="3055" min="1024" max="65535" />
-        <button id="btn-connect" class="primary">\u8FDE\u63A5</button>
-      </div>
-    </div>
-
-    <div id="progress-container" class="progress-panel hidden">
-      <h2>\u64CD\u4F5C\u8FDB\u5EA6</h2>
-      <div id="progress-message">\u65E0\u8FDB\u884C\u4E2D\u7684\u64CD\u4F5C</div>
-      <div class="progress-track">
-        <div id="progress-bar" style="width: 0%;"></div>
-      </div>
-      <div class="progress-meta">
-        <span id="progress-status">\u672A\u5F00\u59CB</span>
-        <span id="progress-percentage">0%</span>
-      </div>
-    </div>
-  </div>
-
-  <div id="collapsed-bar">
-    <span class="bar-title">Figma \u7F16\u8F91\u52A9\u624B</span>
-    <button id="restore-btn" title="\u8FD8\u539F\u7A97\u53E3">\u25A1</button>
-  </div>
-
-  <div id="toast" class="toast"></div>
-
-  <script>
-    // WebSocket connection state
-    const state = {
-      connected: false,
-      socket: null,
-      serverPort: 3055,
-      verifiedNodeId: null,
-      verifiedNodeType: null,
-      pendingRequests: new Map(),
-      channel: null,
-      activeRequestId: null,
-      pendingScopeRequest: null,
-      scopeReadyTimer: null,
-      pluginVersion: "unknown",
-    };
-
-    // Bound on the Q11 handshake: plugin main must echo \`scope-ready\` for the
-    // pending request within this window. Without a bound, a lost or never-sent
-    // acknowledgement leaves the UI at "\u8FDE\u63A5\u4E2D\u2026" forever with no stated
-    // recovery (Change 5, P9-F9).
-    const SCOPE_READY_TIMEOUT_MS = 5000;
-
-    function clearPendingScopeRequest() {
-      if (state.scopeReadyTimer !== null) {
-        clearTimeout(state.scopeReadyTimer);
-        state.scopeReadyTimer = null;
-      }
-      state.pendingScopeRequest = null;
-    }
-
-    // UI Elements
-    const portInput = document.getElementById("port");
-    const scopeLinkInput = document.getElementById("scope-link");
-    const connectButton = document.getElementById("btn-connect");
-    const connectionStatus = document.getElementById("connection-status");
-
-    // Local minimize / restore controls
-    document.getElementById("minimize-btn").addEventListener("click", () => {
-      document.body.classList.add("minimized");
-      parent.postMessage({ pluginMessage: { type: "__ui_minimize" } }, "*");
-    });
-    document.getElementById("restore-btn").addEventListener("click", () => {
-      document.body.classList.remove("minimized");
-      parent.postMessage({ pluginMessage: { type: "__ui_restore" } }, "*");
-    });
-
-    // Channel card: request persisted settings (port + stable channel code)
-    const channelCodeEl = document.getElementById("channel-code");
-    const channelBadgeEl = document.getElementById("channel-badge");
-    const btnCopyChannel = document.getElementById("btn-copy-channel");
-
-    function updateChannelCard(connected) {
-      if (state.channel) {
-        channelCodeEl.textContent = state.channel;
-        channelCodeEl.classList.remove("empty");
-        btnCopyChannel.disabled = false;
-      }
-      if (connected) {
-        channelBadgeEl.textContent = "\u5DF2\u8FDE\u63A5";
-        channelBadgeEl.classList.add("connected");
-      } else if (state.channel) {
-        channelBadgeEl.textContent = "\u672A\u8FDE\u63A5";
-        channelBadgeEl.classList.remove("connected");
-      }
-    }
-
-    btnCopyChannel.addEventListener("click", () => copyChannelToClipboard());
-
-    parent.postMessage({ pluginMessage: { type: "get-settings" } }, "*");
-    const toast = document.getElementById("toast");
-    const copyLinkButton = document.getElementById("btn-copy-link");
-
-    // Tabs
-    const tabs = document.querySelectorAll(".tab");
-    const tabContents = document.querySelectorAll(".tab-content");
-
-    // Add UI elements for progress tracking
-    const progressContainer = document.getElementById("progress-container");
-    const progressBar = document.getElementById("progress-bar");
-    const progressMessage = document.getElementById("progress-message");
-    const progressStatus = document.getElementById("progress-status");
-    const progressPercentage = document.getElementById("progress-percentage");
-
-    // Initialize UI
-    function updateConnectionStatus(isConnected, message) {
-      state.connected = isConnected;
-      connectionStatus.innerHTML =
-        message ||
-        (isConnected
-          ? "\u5DF2\u8FDE\u63A5 MCP \u670D\u52A1"
-          : "\u672A\u8FDE\u63A5 MCP \u670D\u52A1");
-      connectionStatus.className = \`status \${isConnected ? "connected" : "disconnected"
-        }\`;
-
-      if (isConnected) {
-        connectButton.textContent = "\u65AD\u5F00";
-        connectButton.className = "secondary";
-        connectButton.disabled = false;
-        if (!state.verifiedNodeId) {
-          scopeLinkInput.placeholder = "\u5DF2\u8FDE\u63A5\uFF08\u53EA\u8BFB\u6A21\u5F0F\uFF09";
-        }
-      } else {
-        if (message === "\u8FDE\u63A5\u4E2D\u2026" || message === "\u65AD\u5F00\u4E2D\u2026") {
-          connectButton.textContent = message;
-          connectButton.disabled = true;
-        } else {
-          connectButton.textContent = "\u8FDE\u63A5";
-          connectButton.className = "primary";
-          connectButton.disabled = false;
-          scopeLinkInput.placeholder = "\u7C98\u8D34 Figma \u94FE\u63A5\u9650\u5B9A\u7F16\u8F91\u8303\u56F4";
-        }
-      }
-      portInput.disabled = isConnected;
-      scopeLinkInput.disabled = isConnected;
-      document.getElementById("allow-edit-variable").disabled = isConnected;
-      document.getElementById("allow-edit-style").disabled = isConnected;
-    }
-
-    function showToast(message = "\u5DF2\u590D\u5236\u5230\u526A\u8D34\u677F\uFF01") {
-      toast.textContent = message;
-      toast.classList.add("show");
-      setTimeout(() => {
-        toast.classList.remove("show");
-      }, 2000);
-    }
-
-    function copyTextToClipboard(text, successMessage) {
-      if (!text) return;
-      // Create a temporary textarea element to copy text
-      // This is required because navigator.clipboard may not be available in Figma iframe context
-      // or might require permissions that are tricky. The textarea method is reliable.
-      const el = document.createElement('textarea');
-      el.value = text;
-      document.body.appendChild(el);
-      el.select();
-      document.execCommand('copy');
-      document.body.removeChild(el);
-      if (successMessage) {
-        showToast(successMessage);
-      }
-    }
-
-    function copyChannelToClipboard() {
-      if (state.channel) {
-        copyTextToClipboard(state.channel, "\u9891\u9053\u7801\u5DF2\u590D\u5236\uFF1A" + state.channel);
-      }
-    }
-
-    // Connect to WebSocket server
-    async function connectToServer(port) {
-      try {
-        if (state.connected && state.socket) {
-          updateConnectionStatus(true, "\u5DF2\u8FDE\u63A5\u5230\u670D\u52A1");
-          return;
-        }
-
-        state.serverPort = port;
-        state.socket = new WebSocket(\`ws://localhost:\${port}\`);
-
-        let wasConnected = false;
-        let closeStatusMessage = null;
-        state.socket.onopen = () => {
-          wasConnected = true;
-          // Use existing channel name if available, otherwise generate + persist
-          if (!state.channel) {
-            state.channel = generateChannelName();
-            parent.postMessage(
-              {
-                pluginMessage: {
-                  type: "update-settings",
-                  serverPort: state.serverPort,
-                  channel: state.channel,
-                },
-              },
-              "*"
-            );
-          }
-          updateChannelCard(state.connected);
-          const channelName = state.channel;
-          console.log("Joining channel:", channelName);
-
-          // Join the channel using the same format as App.tsx
-          state.socket.send(
-            JSON.stringify({
-              type: "join",
-              channel: channelName.trim(),
-              clientType: "plugin",
-              pluginVersion: state.pluginVersion,
-            })
-          );
-        };
-
-        state.socket.onmessage = (event) => {
-          try {
-            const data = JSON.parse(event.data);
-            console.log("Received message:", data);
-
-            if (data.type === "system") {
-              // Successfully joined channel
-              if (data.message && data.message.result) {
-                state.connected = true;
-                updateChannelCard(true);
-
-                // \u72B6\u6001\u6761\u53EA\u4FDD\u7559\u5355\u884C\u72B6\u6001\uFF08\u9891\u9053\u7801\u5DF2\u5728\u9891\u9053\u5361\u5C55\u793A\uFF0C\u4E0D\u91CD\u590D\uFF09
-                updateConnectionStatus(
-                  true,
-                  state.verifiedNodeId ? "\u5DF2\u8FDE\u63A5" : "\u5DF2\u8FDE\u63A5\uFF08\u53EA\u8BFB\u6A21\u5F0F\uFF09"
-                );
-
-                // Notify the plugin code
-                parent.postMessage(
-                  {
-                    pluginMessage: {
-                      type: "notify",
-                      message: \`\u5DF2\u8FDE\u63A5\u5230 MCP \u670D\u52A1\uFF08\u7AEF\u53E3 \${port}\uFF09\`,
-                    },
-                  },
-                  "*"
-                );
-              }
-            } else if (data.type === "join_error") {
-              const code = typeof data.code === "string" ? \` (\${data.code})\` : "";
-              const detail = typeof data.message === "string"
-                ? data.message
-                : "\u670D\u52A1\u62D2\u7EDD\u4E86\u8FDE\u63A5\u8BF7\u6C42\u3002";
-              closeStatusMessage = \`\u52A0\u5165\u9891\u9053\u5931\u8D25\${code}\uFF1A\${detail}\`;
-              console.error(closeStatusMessage);
-              updateConnectionStatus(false, closeStatusMessage);
-              state.socket.close();
-              return;
-            } else if (data.type === "error") {
-              closeStatusMessage = \`\u9519\u8BEF\uFF1A\${data.message}\`;
-              console.error("Error:", data.message);
-              updateConnectionStatus(false, closeStatusMessage);
-              state.socket.close();
-              return;
-            }
-
-            handleSocketMessage(data);
-          } catch (error) {
-            console.error("Error parsing message:", error);
-          }
-        };
-
-        state.socket.onclose = (event) => {
-          const previouslyConnected = wasConnected;
-          state.connected = false;
-          state.socket = null;
-
-          if (closeStatusMessage) {
-            updateConnectionStatus(false, closeStatusMessage);
-          } else if (previouslyConnected) {
-            updateConnectionStatus(false, "\u5DF2\u65AD\u5F00\u8FDE\u63A5");
-          } else {
-            updateConnectionStatus(false, \`Failed to connect. Is the MCP server running on port \${port}?\`);
-          }
-          // \u975E\u624B\u52A8\u65AD\u5F00 \u2192 3 \u79D2\u540E\u81EA\u52A8\u91CD\u8FDE\uFF08\u9891\u9053\u7801\u5DF2\u6301\u4E45\u5316\uFF0C\u91CD\u8FDE\u5373\u6062\u590D\u539F\u9891\u9053\uFF09
-          scheduleAutoReconnect();
-        };
-
-        state.socket.onerror = (error) => {
-          console.error("WebSocket error:", error);
-          // onclose will handle the message if it's a failed connection
-          if (state.connected) {
-            updateConnectionStatus(false, "Connection error occurred");
-          }
-        };
-      } catch (error) {
-        console.error("Connection error:", error);
-        updateConnectionStatus(
-          false,
-          \`Connection error: \${error.message || "Unknown error"}\`
-        );
-      }
-    }
-
-    // Disconnect from websocket server
-    let manualDisconnect = false;
-    let autoReconnectTimer = null;
-
-    function scheduleAutoReconnect() {
-      if (manualDisconnect || autoReconnectTimer || state.connected) return;
-      autoReconnectTimer = setTimeout(() => {
-        autoReconnectTimer = null;
-        if (manualDisconnect || state.connected) return;
-        const port = state.serverPort || parseInt(portInput.value) || 3055;
-        updateConnectionStatus(false, "\u8FDE\u63A5\u5DF2\u65AD\u5F00\uFF0C\u81EA\u52A8\u91CD\u8FDE\u4E2D\u2026");
-        connectToServer(port);
-      }, 3000);
-    }
-
-    function disconnectFromServer() {
-      manualDisconnect = true;
-      clearPendingScopeRequest();
-      if (state.socket) {
-        state.socket.close();
-        state.socket = null;
-        state.connected = false;
-        updateConnectionStatus(false, "\u5DF2\u65AD\u5F00\u8FDE\u63A5");
-      }
-    }
-
-    // Handle messages from the WebSocket
-    async function handleSocketMessage(payload) {
-      const data = payload.message;
-      console.log("handleSocketMessage", data);
-
-      // If it's a response to a previous request
-      if (data.id && state.pendingRequests.has(data.id)) {
-        const { resolve, reject } = state.pendingRequests.get(data.id);
-        state.pendingRequests.delete(data.id);
-
-        if (data.error) {
-          reject(new Error(data.error));
-        } else {
-          resolve(data.result);
-        }
-        return;
-      }
-
-      // If it's a new command
-      if (data.command) {
-        try {
-          state.activeRequestId = data.id;
-          // Send the command to the plugin code
-          parent.postMessage(
-            {
-              pluginMessage: {
-                type: "execute-command",
-                id: data.id,
-                command: data.command,
-                params: data.params,
-              },
-            },
-            "*"
-          );
-        } catch (error) {
-          // Send error back to WebSocket
-          sendErrorResponse(
-            data.id,
-            error.message || "Error executing command"
-          );
-        }
-      }
-    }
-
-    // Send a command to the WebSocket server
-    async function sendCommand(command, params) {
-      return new Promise((resolve, reject) => {
-        if (!state.connected || !state.socket) {
-          reject(new Error("\u672A\u8FDE\u63A5\u5230\u670D\u52A1"));
-          return;
-        }
-
-        const id = generateId();
-        state.pendingRequests.set(id, { resolve, reject });
-
-        state.socket.send(
-          JSON.stringify({
-            id,
-            type: "message",
-            channel: state.channel,
-            message: {
-              id,
-              command,
-              params,
-            },
-          })
-        );
-
-        // Set timeout to reject the promise after 30 seconds
-        setTimeout(() => {
-          if (state.pendingRequests.has(id)) {
-            state.pendingRequests.delete(id);
-            reject(new Error("Request timed out"));
-          }
-        }, 30000);
-      });
-    }
-
-    // Send success response back to WebSocket
-    function sendSuccessResponse(id, result) {
-      if (!state.connected || !state.socket) {
-        console.error("Cannot send response: socket not connected");
-        return;
-      }
-
-      state.socket.send(
-        JSON.stringify({
-          id,
-          type: "message",
-          channel: state.channel,
-          message: {
-            id,
-            result,
-          },
-        })
-      );
-    }
-
-    // Send error response back to WebSocket
-    function sendErrorResponse(id, errorMessage) {
-      if (!state.connected || !state.socket) {
-        console.error("Cannot send error response: socket not connected");
-        return;
-      }
-
-      state.socket.send(
-        JSON.stringify({
-          id,
-          type: "message",
-          channel: state.channel,
-          message: {
-            id,
-            error: errorMessage,
-            result: {}
-          },
-        })
-      );
-    }
-
-    // Helper to generate unique IDs
-    function generateId() {
-      return (
-        Date.now().toString(36) + Math.random().toString(36).substr(2, 5)
-      );
-    }
-
-    // Add this function after the generateId() function
-    function generateChannelName() {
-      const characters = "abcdefghjkmnoprstuvxyz023456789";
-      let result = "";
-      for (let i = 0; i < 4; i++) {
-        result += characters.charAt(
-          Math.floor(Math.random() * characters.length)
-        );
-      }
-      return result;
-    }
-
-    // Tab switching
-    tabs.forEach((tab) => {
-      tab.addEventListener("click", () => {
-        tabs.forEach((t) => t.classList.remove("active"));
-        tabContents.forEach((c) => c.classList.remove("active"));
-
-        tab.classList.add("active");
-        const contentId = "content-" + tab.id.split("-")[1];
-        document.getElementById(contentId).classList.add("active");
-      });
-    });
-
-    // Connect to server
-    connectButton.onclick = () => {
-      manualDisconnect = false;
-      if (autoReconnectTimer) { clearTimeout(autoReconnectTimer); autoReconnectTimer = null; }
-      if (state.connected) {
-        updateConnectionStatus(false, "\u65AD\u5F00\u4E2D\u2026");
-        connectionStatus.className = "status info";
-        disconnectFromServer();
-        return;
-      }
-
-      const scopeInput = document.getElementById("scope-link");
-      const scopeStatus = document.getElementById("scope-status");
-      const link = scopeInput.value.trim();
-
-      if (link.length > 0 && !state.verifiedNodeId) {
-        // Invalid link state
-        scopeStatus.textContent = "\u8BF7\u63D0\u4F9B\u6709\u6548\u7684 Figma \u94FE\u63A5\uFF0C\u6216\u6E05\u7A7A\u8F93\u5165\u6846\u4F7F\u7528\u53EA\u8BFB\u6A21\u5F0F\u3002";
-        scopeStatus.style.color = '#c0392b';
-        scopeStatus.style.display = 'block';
-        return;
-      }
-
-      const allowEditVariable = document.getElementById("allow-edit-variable").checked;
-      const allowEditStyle = document.getElementById("allow-edit-style").checked;
-      const port = parseInt(portInput.value, 10);
-      const requestId = generateId();
-
-      // Do not advertise the plugin on the socket until plugin main confirms
-      // that this exact scope request has been committed.
-      clearPendingScopeRequest();
-      state.pendingScopeRequest = { requestId, port };
-      state.scopeReadyTimer = setTimeout(() => {
-        // Only abandon THIS request: a newer Connect click supersedes it, and
-        // the one-shot requestId match still makes a late reply inert.
-        if (!state.pendingScopeRequest || state.pendingScopeRequest.requestId !== requestId) return;
-        clearPendingScopeRequest();
-        updateConnectionStatus(
-          false,
-          "The plugin did not confirm the editable scope in time. No connection was opened. Click Connect to try again.",
-        );
-      }, SCOPE_READY_TIMEOUT_MS);
-      updateConnectionStatus(false, "\u8FDE\u63A5\u4E2D\u2026");
-      connectionStatus.className = "status info";
-
-      parent.postMessage({ 
-        pluginMessage: { 
-          type: 'set-scope', 
-          requestId,
-          scopeNodeId: state.verifiedNodeId,
-          scopeNodeType: state.verifiedNodeType,
-          allowEditVariable,
-          allowEditStyle
-        } 
-      }, '*');
-    };
-
-    // Scope input validation listener
-    document.getElementById("scope-link").addEventListener("input", (e) => {
-      const link = e.target.value.trim();
-      const scopeStatus = document.getElementById("scope-status");
-
-      // Update copy button state
-      copyLinkButton.disabled = link.length === 0;
-
-      if (link.length === 0) {
-        state.verifiedNodeId = null;
-        state.verifiedNodeType = null;
-        scopeStatus.style.display = 'none';
-        return;
-      }
-
-      parent.postMessage({ pluginMessage: { type: 'validate-scope-link', link } }, '*');
-    });
-
-    // Copy link button click handler
-    copyLinkButton.onclick = () => {
-      copyTextToClipboard(scopeLinkInput.value, "Link copied to clipboard!");
-    };
-
-
-
-    // Function to update progress UI
-    function updateProgressUI(progressData) {
-      // Show progress container if hidden
-      progressContainer.classList.remove("hidden");
-
-      // Update progress bar
-      const progress = progressData.progress || 0;
-      progressBar.style.width = \`\${progress}%\`;
-      progressPercentage.textContent = \`\${progress}%\`;
-
-      // Update message
-      progressMessage.textContent = progressData.message || "Operation in progress";
-
-      // Update status text based on operation state
-      if (progressData.status === 'started') {
-        progressStatus.textContent = "Started";
-        progressStatus.className = "";
-      } else if (progressData.status === 'in_progress') {
-        progressStatus.textContent = "In Progress";
-        progressStatus.className = "";
-      } else if (progressData.status === 'completed') {
-        progressStatus.textContent = "Completed";
-        progressStatus.className = "operation-complete";
-
-        // Hide progress container after 5 seconds
-        setTimeout(() => {
-          progressContainer.classList.add("hidden");
-        }, 5000);
-      } else if (progressData.status === 'error') {
-        progressStatus.textContent = "Error";
-        progressStatus.className = "operation-error";
-      }
-    }
-
-    // Send operation progress update to server
-    function sendProgressUpdateToServer(progressData) {
-      if (!state.connected || !state.socket) {
-        console.error("Cannot send progress update: socket not connected");
-        return;
-      }
-
-      console.log("Sending progress update to server:", progressData);
-
-      state.socket.send(
-        JSON.stringify({
-          id: state.activeRequestId || progressData.commandId,
-          type: "progress_update",
-          channel: state.channel,
-          message: {
-            id: state.activeRequestId || progressData.commandId,
-            type: "progress_update",
-            data: progressData
-          }
-        })
-      );
-    }
-
-    // Reset progress UI
-    function resetProgressUI() {
-      progressContainer.classList.add("hidden");
-      progressBar.style.width = "0%";
-      progressMessage.textContent = "\u65E0\u8FDB\u884C\u4E2D\u7684\u64CD\u4F5C";
-      progressStatus.textContent = "\u672A\u5F00\u59CB";
-      progressStatus.className = "";
-      progressPercentage.textContent = "0%";
-    }
-
-    // Listen for messages from the plugin code
-    window.onmessage = (event) => {
-      const message = event.data.pluginMessage;
-      if (!message) return;
-
-      console.log("Received message from plugin:", message);
-
-      switch (message.type) {
-        case "init-settings":
-          if (message.settings) {
-            if (message.settings.serverPort) {
-              portInput.value = message.settings.serverPort;
-              state.serverPort = message.settings.serverPort;
-            }
-            if (message.settings.channel) {
-              state.channel = message.settings.channel;
-            }
-          }
-          updateChannelCard(false);
-          break;
-        case "plugin-version":
-          state.pluginVersion = message.version;
-          break;
-        case "scope-ready": {
-          const pending = state.pendingScopeRequest;
-          if (!pending || message.requestId !== pending.requestId) {
-            break;
-          }
-
-          // Consume the acknowledgement (and cancel its timeout) before opening
-          // the socket so a duplicate acknowledgement cannot create a second
-          // connection and the bound cannot fire against a served request.
-          clearPendingScopeRequest();
-          state.pluginVersion = message.pluginVersion;
-          connectToServer(pending.port);
-          break;
-        }
-        case "connection-status":
-          updateConnectionStatus(message.connected, message.message);
-          break;
-        case "auto-connect":
-          connectButton.click();
-          break;
-        case "auto-disconnect":
-          if (state.connected) connectButton.click();
-          break;
-        case "command-result":
-          // Forward the result from plugin code back to WebSocket
-          sendSuccessResponse(message.id, message.result);
-          state.activeRequestId = null;
-          break;
-        case "command-error":
-          // Forward the error from plugin code back to WebSocket
-          sendErrorResponse(message.id, message.error);
-          state.activeRequestId = null;
-          break;
-        case "scope-validation-result":
-          const scopeStatus = document.getElementById("scope-status");
-          if (message.valid) {
-            state.verifiedNodeId = message.nodeId;
-            state.verifiedNodeType = message.nodeType;
-            const scopeLabel = message.nodeType === 'PAGE' ? '\u9875\u9762' : '\u56FE\u5C42';
-            scopeStatus.textContent = \`\u2713 \u53EF\u7F16\u8F91\u8303\u56F4\uFF1A[\${scopeLabel}] \${message.nodeName}\`;
-            scopeStatus.style.color = '#1a7f37'; // Green
-            scopeStatus.style.display = 'block';
-          } else {
-            state.verifiedNodeId = null;
-            state.verifiedNodeType = null;
-            scopeStatus.textContent = \`\u2717 \${message.reason}\`;
-            scopeStatus.style.color = '#c0392b'; // Red
-            scopeStatus.style.display = 'block';
-          }
-          break;
-        case "command_progress":
-          // Update UI with progress information
-          updateProgressUI(message);
-          // Forward progress update to server
-          sendProgressUpdateToServer(message);
-          break;
-      }
-    };
-
-    // Ensure socket is closed when plugin window is closed
-    window.addEventListener('beforeunload', () => {
-      disconnectFromServer();
-    });
-  <\/script>
-</body>
-
-</html>
+  var PLUGIN_VERSION = true ? "1.0.1" : "unknown";
+  figma.showUI(`<!DOCTYPE html>\r
+<html lang="zh-CN">\r
+\r
+<head>\r
+  <meta charset="utf-8" />\r
+  <style>\r
+    :root {\r
+      --bg: #ffffff;\r
+      --text: #1f2328;\r
+      --text-2: #6b7280;\r
+      --text-3: #9ca3af;\r
+      --border: #e5e7eb;\r
+      --fill: #f6f7f8;\r
+      --fill-2: #eef1f4;\r
+      --primary: #18a0fb;\r
+      --primary-hover: #0d8ee0;\r
+      --primary-soft: #eaf5fe;\r
+      --green: #1a7f37;\r
+      --green-bg: #e6f6ec;\r
+      --red: #c0392b;\r
+      --radius: 8px;\r
+    }\r
+\r
+    * { box-sizing: border-box; }\r
+\r
+    body {\r
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",\r
+        "Microsoft YaHei", Roboto, Helvetica, Arial, sans-serif;\r
+      margin: 0;\r
+      padding: 16px;\r
+      color: var(--text);\r
+      background: var(--bg);\r
+      font-size: 13px;\r
+      line-height: 1.5;\r
+    }\r
+\r
+    .container { position: relative; display: flex; flex-direction: column; gap: 14px; }\r
+\r
+    /* ---- \u72B6\u6001\u6A2A\u5E45 ---- */\r
+    .status {\r
+      display: flex;\r
+      align-items: center;\r
+      gap: 8px;\r
+      padding: 10px 12px;\r
+      border-radius: 10px;\r
+      font-size: 13px;\r
+      font-weight: 600;\r
+      margin: 0;\r
+    }\r
+    .status::before {\r
+      content: "";\r
+      width: 8px; height: 8px;\r
+      border-radius: 50%;\r
+      background: currentColor;\r
+      flex: none;\r
+    }\r
+    .status.connected { background: var(--green-bg); color: var(--green); }\r
+    .status.disconnected { background: var(--fill-2); color: var(--text-2); }\r
+    .status.info { background: var(--primary-soft); color: var(--primary); }\r
+\r
+    /* ---- \u9891\u9053\u5361 ---- */\r
+    .channel-card {\r
+      padding: 12px;\r
+      background: var(--primary-soft);\r
+      border: 1px solid #d6e8fa;\r
+      border-radius: 12px;\r
+    }\r
+    .channel-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }\r
+    .channel-title { font-size: 12px; color: var(--text-2); font-weight: 500; }\r
+    .channel-badge {\r
+      padding: 2px 10px; border-radius: 999px;\r
+      font-size: 11px; font-weight: 600;\r
+      background: var(--fill-2); color: var(--text-2);\r
+    }\r
+    .channel-badge.connected { background: #d7f0dd; color: var(--green); }\r
+    .channel-row { display: flex; align-items: stretch; gap: 8px; }\r
+    .channel-code {\r
+      flex: 1;\r
+      display: flex; align-items: center; justify-content: center;\r
+      font-family: Consolas, Menlo, monospace;\r
+      font-size: 20px; font-weight: 700; letter-spacing: 6px;\r
+      color: var(--primary); background: #ffffff;\r
+      border: 1px solid #d6e8fa; border-radius: var(--radius);\r
+      padding: 8px 10px; user-select: all; min-height: 40px;\r
+    }\r
+    .channel-code.empty { color: var(--text-3); font-size: 12px; letter-spacing: 1px; font-weight: 400; }\r
+    .channel-hint { font-size: 11px; color: var(--text-3); margin-top: 8px; }\r
+\r
+    /* ---- \u901A\u7528\u63A7\u4EF6 ---- */\r
+    .section { display: flex; flex-direction: column; gap: 6px; }\r
+    .section > label {\r
+      font-size: 12px; font-weight: 600; color: var(--text);\r
+      display: flex; align-items: baseline; justify-content: space-between;\r
+      margin: 0;\r
+    }\r
+    .label-hint { font-size: 11px; font-weight: 400; color: var(--text-3); }\r
+\r
+    .input-row { display: flex; gap: 8px; align-items: stretch; }\r
+    input[type="text"], input[type="number"], input:not([type]) {\r
+      flex: 1; min-width: 0;\r
+      border: 1px solid var(--border); border-radius: var(--radius);\r
+      padding: 8px 10px; margin: 0;\r
+      font-size: 13px; background: var(--fill); color: var(--text);\r
+      transition: border-color 0.15s, background 0.15s;\r
+    }\r
+    input:focus { outline: none; border-color: var(--primary); background: #ffffff; }\r
+    input:disabled { opacity: 0.6; cursor: not-allowed; }\r
+    input[type="checkbox"] { width: auto; cursor: pointer; accent-color: var(--primary); }\r
+\r
+    button {\r
+      border: none; border-radius: var(--radius);\r
+      padding: 8px 14px; margin: 0;\r
+      font-size: 13px; font-weight: 600;\r
+      cursor: pointer; transition: background-color 0.15s;\r
+      white-space: nowrap;\r
+    }\r
+    button.primary { background: var(--primary); color: #ffffff; }\r
+    button.primary:hover { background: var(--primary-hover); }\r
+    button.primary:disabled { background: #b9dff9; cursor: not-allowed; }\r
+    button.secondary { background: var(--fill-2); color: var(--text); }\r
+    button.secondary:hover { background: #e2e6ea; }\r
+    button:disabled { cursor: not-allowed; opacity: 0.6; }\r
+    button.btn-ghost {\r
+      background: #ffffff; border: 1px solid var(--border); color: var(--text-2);\r
+      padding: 8px 10px;\r
+    }\r
+    button.btn-ghost:hover:not(:disabled) { background: var(--fill); color: var(--text); }\r
+    button svg { pointer-events: none; display: block; }\r
+\r
+    .scope-status { font-size: 11px; display: none; }\r
+\r
+    .check-row { display: flex; flex-direction: column; gap: 6px; margin-top: 2px; }\r
+    .check-row label {\r
+      display: flex; align-items: center; gap: 8px;\r
+      font-size: 12px; font-weight: 400; color: var(--text-2);\r
+      cursor: pointer; margin: 0;\r
+    }\r
+\r
+    /* ---- \u8FDB\u5EA6 ---- */\r
+    .progress-panel {\r
+      padding: 10px 12px;\r
+      background: var(--fill); border: 1px solid var(--border); border-radius: 10px;\r
+      display: flex; flex-direction: column; gap: 6px;\r
+    }\r
+    .progress-panel h2 { font-size: 12px; margin: 0; color: var(--text); }\r
+    #progress-message { font-size: 12px; color: var(--text-2); }\r
+    .progress-track { width: 100%; background: var(--fill-2); border-radius: 999px; height: 6px; overflow: hidden; }\r
+    #progress-bar { height: 100%; background: var(--primary); border-radius: 999px; transition: width 0.3s; }\r
+    .progress-meta { display: flex; justify-content: space-between; font-size: 11px; color: var(--text-3); }\r
+\r
+    /* ---- \u6298\u53E0\u6761 / \u60AC\u6D6E\u94AE / \u6C14\u6CE1 ---- */\r
+    #collapsed-bar {\r
+      display: none; align-items: center; justify-content: space-between;\r
+      padding: 6px 10px; background: var(--fill); border-top: 1px solid var(--border);\r
+      user-select: none;\r
+    }\r
+    #collapsed-bar .bar-title { font-size: 11px; color: var(--text-3); }\r
+    #restore-btn {\r
+      width: 24px; height: 24px; padding: 0;\r
+      background: transparent; border: 1px solid var(--border); border-radius: 6px;\r
+      color: var(--text-3); font-size: 13px; line-height: 1; cursor: pointer;\r
+    }\r
+    #restore-btn:hover { color: var(--text); background: var(--fill-2); }\r
+\r
+    .minimize-fab {\r
+      position: absolute; top: -4px; right: -4px; z-index: 10;\r
+      width: 26px; height: 26px; padding: 0;\r
+      background: var(--fill); border: 1px solid var(--border); border-radius: 8px;\r
+      color: var(--text-3); font-size: 15px; line-height: 1; cursor: pointer;\r
+    }\r
+    .minimize-fab:hover { color: var(--text); background: var(--fill-2); }\r
+\r
+    .toast {\r
+      position: fixed; bottom: 16px; left: 50%;\r
+      transform: translateX(-50%);\r
+      background: #1f2328; color: #ffffff;\r
+      padding: 8px 16px; border-radius: 999px;\r
+      font-size: 12px;\r
+      opacity: 0; transition: opacity 0.3s;\r
+      pointer-events: none; z-index: 1000;\r
+    }\r
+    .toast.show { opacity: 1; }\r
+\r
+    .hidden { display: none !important; }\r
+    body.minimized { padding: 0; overflow: hidden; }\r
+    body.minimized .container { display: none; }\r
+    body.minimized #collapsed-bar {\r
+      display: flex;\r
+      height: 100vh;\r
+      align-items: center;\r
+      gap: 8px;\r
+      padding: 0 10px;\r
+    }\r
+  </style>\r
+</head>\r
+\r
+<body>\r
+  <div class="container">\r
+    <button id="minimize-btn" class="minimize-fab" title="\u6700\u5C0F\u5316\u7A97\u53E3">\u2013</button>\r
+\r
+    <div id="connection-status" class="status disconnected">\u672A\u8FDE\u63A5 MCP \u670D\u52A1</div>\r
+\r
+    <div class="channel-card" id="channel-card">\r
+      <div class="channel-head">\r
+        <span class="channel-title">\u9891\u9053\u7801</span>\r
+        <span class="channel-badge" id="channel-badge">\u672A\u8FDE\u63A5</span>\r
+      </div>\r
+      <div class="channel-row">\r
+        <code class="channel-code empty" id="channel-code">\u8FDE\u63A5\u540E\u663E\u793A</code>\r
+        <button class="btn-ghost" id="btn-copy-channel" title="\u590D\u5236\u9891\u9053\u7801" disabled>\u590D\u5236</button>\r
+      </div>\r
+      <div class="channel-hint">\u9996\u6B21\u8FDE\u63A5\u540E\u56FA\u5B9A\u4E0D\u53D8\uFF0CClaude \u7AEF\u81EA\u52A8\u52A0\u5165</div>\r
+    </div>\r
+\r
+    <div class="section">\r
+      <label for="scope-link">\u7F16\u8F91\u8303\u56F4 <span class="label-hint">\u7559\u7A7A\u4E3A\u53EA\u8BFB\u6A21\u5F0F</span></label>\r
+      <div class="input-row">\r
+        <input type="text" id="scope-link" placeholder="\u7C98\u8D34 Figma \u8282\u70B9\u6216\u753B\u677F\u94FE\u63A5" />\r
+        <button id="btn-copy-link" class="btn-ghost" disabled title="\u590D\u5236\u5F53\u524D\u9009\u4E2D\u9879\u94FE\u63A5">\r
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"\r
+            stroke-linecap="round" stroke-linejoin="round">\r
+            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>\r
+            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>\r
+          </svg>\r
+        </button>\r
+      </div>\r
+      <div id="scope-status" class="scope-status"></div>\r
+      <div class="check-row">\r
+        <label><input type="checkbox" id="allow-edit-variable" />\u5141\u8BB8 AI \u4FEE\u6539\u53D8\u91CF</label>\r
+        <label><input type="checkbox" id="allow-edit-style" />\u5141\u8BB8 AI \u4FEE\u6539\u6837\u5F0F</label>\r
+      </div>\r
+    </div>\r
+\r
+    <div class="section">\r
+      <label for="port">\u670D\u52A1\u7AEF\u53E3 <span class="label-hint">WebSocket</span></label>\r
+      <div class="input-row">\r
+        <input type="number" id="port" placeholder="3055" value="3055" min="1024" max="65535" />\r
+        <button id="btn-connect" class="primary">\u8FDE\u63A5</button>\r
+      </div>\r
+    </div>\r
+\r
+    <div id="progress-container" class="progress-panel hidden">\r
+      <h2>\u64CD\u4F5C\u8FDB\u5EA6</h2>\r
+      <div id="progress-message">\u65E0\u8FDB\u884C\u4E2D\u7684\u64CD\u4F5C</div>\r
+      <div class="progress-track">\r
+        <div id="progress-bar" style="width: 0%;"></div>\r
+      </div>\r
+      <div class="progress-meta">\r
+        <span id="progress-status">\u672A\u5F00\u59CB</span>\r
+        <span id="progress-percentage">0%</span>\r
+      </div>\r
+    </div>\r
+  </div>\r
+\r
+  <div id="collapsed-bar">\r
+    <span class="bar-title">Figma \u7F16\u8F91\u52A9\u624B</span>\r
+    <button id="restore-btn" title="\u8FD8\u539F\u7A97\u53E3">\u25A1</button>\r
+  </div>\r
+\r
+  <div id="toast" class="toast"></div>\r
+\r
+  <script>\r
+    // WebSocket connection state\r
+    const state = {\r
+      connected: false,\r
+      socket: null,\r
+      serverPort: 3055,\r
+      verifiedNodeId: null,\r
+      verifiedNodeType: null,\r
+      pendingRequests: new Map(),\r
+      channel: null,\r
+      activeRequestId: null,\r
+      pendingScopeRequest: null,\r
+      scopeReadyTimer: null,\r
+      pluginVersion: "unknown",\r
+    };\r
+\r
+    // Bound on the Q11 handshake: plugin main must echo \`scope-ready\` for the\r
+    // pending request within this window. Without a bound, a lost or never-sent\r
+    // acknowledgement leaves the UI at "\u8FDE\u63A5\u4E2D\u2026" forever with no stated\r
+    // recovery (Change 5, P9-F9).\r
+    const SCOPE_READY_TIMEOUT_MS = 5000;\r
+\r
+    function clearPendingScopeRequest() {\r
+      if (state.scopeReadyTimer !== null) {\r
+        clearTimeout(state.scopeReadyTimer);\r
+        state.scopeReadyTimer = null;\r
+      }\r
+      state.pendingScopeRequest = null;\r
+    }\r
+\r
+    // UI Elements\r
+    const portInput = document.getElementById("port");\r
+    const scopeLinkInput = document.getElementById("scope-link");\r
+    const connectButton = document.getElementById("btn-connect");\r
+    const connectionStatus = document.getElementById("connection-status");\r
+\r
+    // Local minimize / restore controls\r
+    document.getElementById("minimize-btn").addEventListener("click", () => {\r
+      document.body.classList.add("minimized");\r
+      parent.postMessage({ pluginMessage: { type: "__ui_minimize" } }, "*");\r
+    });\r
+    document.getElementById("restore-btn").addEventListener("click", () => {\r
+      document.body.classList.remove("minimized");\r
+      parent.postMessage({ pluginMessage: { type: "__ui_restore" } }, "*");\r
+    });\r
+\r
+    // Channel card: request persisted settings (port + stable channel code)\r
+    const channelCodeEl = document.getElementById("channel-code");\r
+    const channelBadgeEl = document.getElementById("channel-badge");\r
+    const btnCopyChannel = document.getElementById("btn-copy-channel");\r
+\r
+    function updateChannelCard(connected) {\r
+      if (state.channel) {\r
+        channelCodeEl.textContent = state.channel;\r
+        channelCodeEl.classList.remove("empty");\r
+        btnCopyChannel.disabled = false;\r
+      }\r
+      if (connected) {\r
+        channelBadgeEl.textContent = "\u5DF2\u8FDE\u63A5";\r
+        channelBadgeEl.classList.add("connected");\r
+      } else if (state.channel) {\r
+        channelBadgeEl.textContent = "\u672A\u8FDE\u63A5";\r
+        channelBadgeEl.classList.remove("connected");\r
+      }\r
+    }\r
+\r
+    btnCopyChannel.addEventListener("click", () => copyChannelToClipboard());\r
+\r
+    parent.postMessage({ pluginMessage: { type: "get-settings" } }, "*");\r
+    const toast = document.getElementById("toast");\r
+    const copyLinkButton = document.getElementById("btn-copy-link");\r
+\r
+    // Tabs\r
+    const tabs = document.querySelectorAll(".tab");\r
+    const tabContents = document.querySelectorAll(".tab-content");\r
+\r
+    // Add UI elements for progress tracking\r
+    const progressContainer = document.getElementById("progress-container");\r
+    const progressBar = document.getElementById("progress-bar");\r
+    const progressMessage = document.getElementById("progress-message");\r
+    const progressStatus = document.getElementById("progress-status");\r
+    const progressPercentage = document.getElementById("progress-percentage");\r
+\r
+    // Initialize UI\r
+    function updateConnectionStatus(isConnected, message) {\r
+      state.connected = isConnected;\r
+      connectionStatus.innerHTML =\r
+        message ||\r
+        (isConnected\r
+          ? "\u5DF2\u8FDE\u63A5 MCP \u670D\u52A1"\r
+          : "\u672A\u8FDE\u63A5 MCP \u670D\u52A1");\r
+      connectionStatus.className = \`status \${isConnected ? "connected" : "disconnected"\r
+        }\`;\r
+\r
+      if (isConnected) {\r
+        connectButton.textContent = "\u65AD\u5F00";\r
+        connectButton.className = "secondary";\r
+        connectButton.disabled = false;\r
+        if (!state.verifiedNodeId) {\r
+          scopeLinkInput.placeholder = "\u5DF2\u8FDE\u63A5\uFF08\u53EA\u8BFB\u6A21\u5F0F\uFF09";\r
+        }\r
+      } else {\r
+        if (message === "\u8FDE\u63A5\u4E2D\u2026" || message === "\u65AD\u5F00\u4E2D\u2026") {\r
+          connectButton.textContent = message;\r
+          connectButton.disabled = true;\r
+        } else {\r
+          connectButton.textContent = "\u8FDE\u63A5";\r
+          connectButton.className = "primary";\r
+          connectButton.disabled = false;\r
+          scopeLinkInput.placeholder = "\u7C98\u8D34 Figma \u94FE\u63A5\u9650\u5B9A\u7F16\u8F91\u8303\u56F4";\r
+        }\r
+      }\r
+      portInput.disabled = isConnected;\r
+      scopeLinkInput.disabled = isConnected;\r
+      document.getElementById("allow-edit-variable").disabled = isConnected;\r
+      document.getElementById("allow-edit-style").disabled = isConnected;\r
+    }\r
+\r
+    function showToast(message = "\u5DF2\u590D\u5236\u5230\u526A\u8D34\u677F\uFF01") {\r
+      toast.textContent = message;\r
+      toast.classList.add("show");\r
+      setTimeout(() => {\r
+        toast.classList.remove("show");\r
+      }, 2000);\r
+    }\r
+\r
+    function copyTextToClipboard(text, successMessage) {\r
+      if (!text) return;\r
+      // Create a temporary textarea element to copy text\r
+      // This is required because navigator.clipboard may not be available in Figma iframe context\r
+      // or might require permissions that are tricky. The textarea method is reliable.\r
+      const el = document.createElement('textarea');\r
+      el.value = text;\r
+      document.body.appendChild(el);\r
+      el.select();\r
+      document.execCommand('copy');\r
+      document.body.removeChild(el);\r
+      if (successMessage) {\r
+        showToast(successMessage);\r
+      }\r
+    }\r
+\r
+    function copyChannelToClipboard() {\r
+      if (state.channel) {\r
+        copyTextToClipboard(state.channel, "\u9891\u9053\u7801\u5DF2\u590D\u5236\uFF1A" + state.channel);\r
+      }\r
+    }\r
+\r
+    // Connect to WebSocket server\r
+    async function connectToServer(port) {\r
+      try {\r
+        if (state.connected && state.socket) {\r
+          updateConnectionStatus(true, "\u5DF2\u8FDE\u63A5\u5230\u670D\u52A1");\r
+          return;\r
+        }\r
+\r
+        state.serverPort = port;\r
+        state.socket = new WebSocket(\`ws://localhost:\${port}\`);\r
+\r
+        let wasConnected = false;\r
+        let closeStatusMessage = null;\r
+        state.socket.onopen = () => {\r
+          wasConnected = true;\r
+          // Use existing channel name if available, otherwise generate + persist\r
+          if (!state.channel) {\r
+            state.channel = generateChannelName();\r
+            parent.postMessage(\r
+              {\r
+                pluginMessage: {\r
+                  type: "update-settings",\r
+                  serverPort: state.serverPort,\r
+                  channel: state.channel,\r
+                },\r
+              },\r
+              "*"\r
+            );\r
+          }\r
+          updateChannelCard(state.connected);\r
+          const channelName = state.channel;\r
+          console.log("Joining channel:", channelName);\r
+\r
+          // Join the channel using the same format as App.tsx\r
+          state.socket.send(\r
+            JSON.stringify({\r
+              type: "join",\r
+              channel: channelName.trim(),\r
+              clientType: "plugin",\r
+              pluginVersion: state.pluginVersion,\r
+            })\r
+          );\r
+        };\r
+\r
+        state.socket.onmessage = (event) => {\r
+          try {\r
+            const data = JSON.parse(event.data);\r
+            console.log("Received message:", data);\r
+\r
+            if (data.type === "system") {\r
+              // Successfully joined channel\r
+              if (data.message && data.message.result) {\r
+                state.connected = true;\r
+                updateChannelCard(true);\r
+\r
+                // \u72B6\u6001\u6761\u53EA\u4FDD\u7559\u5355\u884C\u72B6\u6001\uFF08\u9891\u9053\u7801\u5DF2\u5728\u9891\u9053\u5361\u5C55\u793A\uFF0C\u4E0D\u91CD\u590D\uFF09\r
+                updateConnectionStatus(\r
+                  true,\r
+                  state.verifiedNodeId ? "\u5DF2\u8FDE\u63A5" : "\u5DF2\u8FDE\u63A5\uFF08\u53EA\u8BFB\u6A21\u5F0F\uFF09"\r
+                );\r
+\r
+                // Notify the plugin code\r
+                parent.postMessage(\r
+                  {\r
+                    pluginMessage: {\r
+                      type: "notify",\r
+                      message: \`\u5DF2\u8FDE\u63A5\u5230 MCP \u670D\u52A1\uFF08\u7AEF\u53E3 \${port}\uFF09\`,\r
+                    },\r
+                  },\r
+                  "*"\r
+                );\r
+              }\r
+            } else if (data.type === "join_error") {\r
+              const code = typeof data.code === "string" ? \` (\${data.code})\` : "";\r
+              const detail = typeof data.message === "string"\r
+                ? data.message\r
+                : "\u670D\u52A1\u62D2\u7EDD\u4E86\u8FDE\u63A5\u8BF7\u6C42\u3002";\r
+              closeStatusMessage = \`\u52A0\u5165\u9891\u9053\u5931\u8D25\${code}\uFF1A\${detail}\`;\r
+              console.error(closeStatusMessage);\r
+              updateConnectionStatus(false, closeStatusMessage);\r
+              state.socket.close();\r
+              return;\r
+            } else if (data.type === "error") {\r
+              closeStatusMessage = \`\u9519\u8BEF\uFF1A\${data.message}\`;\r
+              console.error("Error:", data.message);\r
+              updateConnectionStatus(false, closeStatusMessage);\r
+              state.socket.close();\r
+              return;\r
+            }\r
+\r
+            handleSocketMessage(data);\r
+          } catch (error) {\r
+            console.error("Error parsing message:", error);\r
+          }\r
+        };\r
+\r
+        state.socket.onclose = (event) => {\r
+          const previouslyConnected = wasConnected;\r
+          state.connected = false;\r
+          state.socket = null;\r
+\r
+          if (closeStatusMessage) {\r
+            updateConnectionStatus(false, closeStatusMessage);\r
+          } else if (previouslyConnected) {\r
+            updateConnectionStatus(false, "\u5DF2\u65AD\u5F00\u8FDE\u63A5");\r
+          } else {\r
+            updateConnectionStatus(false, \`Failed to connect. Is the MCP server running on port \${port}?\`);\r
+          }\r
+          // \u975E\u624B\u52A8\u65AD\u5F00 \u2192 3 \u79D2\u540E\u81EA\u52A8\u91CD\u8FDE\uFF08\u9891\u9053\u7801\u5DF2\u6301\u4E45\u5316\uFF0C\u91CD\u8FDE\u5373\u6062\u590D\u539F\u9891\u9053\uFF09\r
+          scheduleAutoReconnect();\r
+        };\r
+\r
+        state.socket.onerror = (error) => {\r
+          console.error("WebSocket error:", error);\r
+          // onclose will handle the message if it's a failed connection\r
+          if (state.connected) {\r
+            updateConnectionStatus(false, "Connection error occurred");\r
+          }\r
+        };\r
+      } catch (error) {\r
+        console.error("Connection error:", error);\r
+        updateConnectionStatus(\r
+          false,\r
+          \`Connection error: \${error.message || "Unknown error"}\`\r
+        );\r
+      }\r
+    }\r
+\r
+    // Disconnect from websocket server\r
+    let manualDisconnect = false;\r
+    let autoReconnectTimer = null;\r
+\r
+    function scheduleAutoReconnect() {\r
+      if (manualDisconnect || autoReconnectTimer || state.connected) return;\r
+      autoReconnectTimer = setTimeout(() => {\r
+        autoReconnectTimer = null;\r
+        if (manualDisconnect || state.connected) return;\r
+        const port = state.serverPort || parseInt(portInput.value) || 3055;\r
+        updateConnectionStatus(false, "\u8FDE\u63A5\u5DF2\u65AD\u5F00\uFF0C\u81EA\u52A8\u91CD\u8FDE\u4E2D\u2026");\r
+        connectToServer(port);\r
+      }, 3000);\r
+    }\r
+\r
+    function disconnectFromServer() {\r
+      manualDisconnect = true;\r
+      clearPendingScopeRequest();\r
+      if (state.socket) {\r
+        state.socket.close();\r
+        state.socket = null;\r
+        state.connected = false;\r
+        updateConnectionStatus(false, "\u5DF2\u65AD\u5F00\u8FDE\u63A5");\r
+      }\r
+    }\r
+\r
+    // Handle messages from the WebSocket\r
+    async function handleSocketMessage(payload) {\r
+      const data = payload.message;\r
+      console.log("handleSocketMessage", data);\r
+\r
+      // If it's a response to a previous request\r
+      if (data.id && state.pendingRequests.has(data.id)) {\r
+        const { resolve, reject } = state.pendingRequests.get(data.id);\r
+        state.pendingRequests.delete(data.id);\r
+\r
+        if (data.error) {\r
+          reject(new Error(data.error));\r
+        } else {\r
+          resolve(data.result);\r
+        }\r
+        return;\r
+      }\r
+\r
+      // If it's a new command\r
+      if (data.command) {\r
+        try {\r
+          state.activeRequestId = data.id;\r
+          // Send the command to the plugin code\r
+          parent.postMessage(\r
+            {\r
+              pluginMessage: {\r
+                type: "execute-command",\r
+                id: data.id,\r
+                command: data.command,\r
+                params: data.params,\r
+              },\r
+            },\r
+            "*"\r
+          );\r
+        } catch (error) {\r
+          // Send error back to WebSocket\r
+          sendErrorResponse(\r
+            data.id,\r
+            error.message || "Error executing command"\r
+          );\r
+        }\r
+      }\r
+    }\r
+\r
+    // Send a command to the WebSocket server\r
+    async function sendCommand(command, params) {\r
+      return new Promise((resolve, reject) => {\r
+        if (!state.connected || !state.socket) {\r
+          reject(new Error("\u672A\u8FDE\u63A5\u5230\u670D\u52A1"));\r
+          return;\r
+        }\r
+\r
+        const id = generateId();\r
+        state.pendingRequests.set(id, { resolve, reject });\r
+\r
+        state.socket.send(\r
+          JSON.stringify({\r
+            id,\r
+            type: "message",\r
+            channel: state.channel,\r
+            message: {\r
+              id,\r
+              command,\r
+              params,\r
+            },\r
+          })\r
+        );\r
+\r
+        // Set timeout to reject the promise after 30 seconds\r
+        setTimeout(() => {\r
+          if (state.pendingRequests.has(id)) {\r
+            state.pendingRequests.delete(id);\r
+            reject(new Error("Request timed out"));\r
+          }\r
+        }, 30000);\r
+      });\r
+    }\r
+\r
+    // Send success response back to WebSocket\r
+    function sendSuccessResponse(id, result) {\r
+      if (!state.connected || !state.socket) {\r
+        console.error("Cannot send response: socket not connected");\r
+        return;\r
+      }\r
+\r
+      state.socket.send(\r
+        JSON.stringify({\r
+          id,\r
+          type: "message",\r
+          channel: state.channel,\r
+          message: {\r
+            id,\r
+            result,\r
+          },\r
+        })\r
+      );\r
+    }\r
+\r
+    // Send error response back to WebSocket\r
+    function sendErrorResponse(id, errorMessage) {\r
+      if (!state.connected || !state.socket) {\r
+        console.error("Cannot send error response: socket not connected");\r
+        return;\r
+      }\r
+\r
+      state.socket.send(\r
+        JSON.stringify({\r
+          id,\r
+          type: "message",\r
+          channel: state.channel,\r
+          message: {\r
+            id,\r
+            error: errorMessage,\r
+            result: {}\r
+          },\r
+        })\r
+      );\r
+    }\r
+\r
+    // Helper to generate unique IDs\r
+    function generateId() {\r
+      return (\r
+        Date.now().toString(36) + Math.random().toString(36).substr(2, 5)\r
+      );\r
+    }\r
+\r
+    // Add this function after the generateId() function\r
+    function generateChannelName() {\r
+      const characters = "abcdefghjkmnoprstuvxyz023456789";\r
+      let result = "";\r
+      for (let i = 0; i < 4; i++) {\r
+        result += characters.charAt(\r
+          Math.floor(Math.random() * characters.length)\r
+        );\r
+      }\r
+      return result;\r
+    }\r
+\r
+    // Tab switching\r
+    tabs.forEach((tab) => {\r
+      tab.addEventListener("click", () => {\r
+        tabs.forEach((t) => t.classList.remove("active"));\r
+        tabContents.forEach((c) => c.classList.remove("active"));\r
+\r
+        tab.classList.add("active");\r
+        const contentId = "content-" + tab.id.split("-")[1];\r
+        document.getElementById(contentId).classList.add("active");\r
+      });\r
+    });\r
+\r
+    // Connect to server\r
+    connectButton.onclick = () => {\r
+      manualDisconnect = false;\r
+      if (autoReconnectTimer) { clearTimeout(autoReconnectTimer); autoReconnectTimer = null; }\r
+      if (state.connected) {\r
+        updateConnectionStatus(false, "\u65AD\u5F00\u4E2D\u2026");\r
+        connectionStatus.className = "status info";\r
+        disconnectFromServer();\r
+        return;\r
+      }\r
+\r
+      const scopeInput = document.getElementById("scope-link");\r
+      const scopeStatus = document.getElementById("scope-status");\r
+      const link = scopeInput.value.trim();\r
+\r
+      if (link.length > 0 && !state.verifiedNodeId) {\r
+        // Invalid link state\r
+        scopeStatus.textContent = "\u8BF7\u63D0\u4F9B\u6709\u6548\u7684 Figma \u94FE\u63A5\uFF0C\u6216\u6E05\u7A7A\u8F93\u5165\u6846\u4F7F\u7528\u53EA\u8BFB\u6A21\u5F0F\u3002";\r
+        scopeStatus.style.color = '#c0392b';\r
+        scopeStatus.style.display = 'block';\r
+        return;\r
+      }\r
+\r
+      const allowEditVariable = document.getElementById("allow-edit-variable").checked;\r
+      const allowEditStyle = document.getElementById("allow-edit-style").checked;\r
+      const port = parseInt(portInput.value, 10);\r
+      const requestId = generateId();\r
+\r
+      // Do not advertise the plugin on the socket until plugin main confirms\r
+      // that this exact scope request has been committed.\r
+      clearPendingScopeRequest();\r
+      state.pendingScopeRequest = { requestId, port };\r
+      state.scopeReadyTimer = setTimeout(() => {\r
+        // Only abandon THIS request: a newer Connect click supersedes it, and\r
+        // the one-shot requestId match still makes a late reply inert.\r
+        if (!state.pendingScopeRequest || state.pendingScopeRequest.requestId !== requestId) return;\r
+        clearPendingScopeRequest();\r
+        updateConnectionStatus(\r
+          false,\r
+          "The plugin did not confirm the editable scope in time. No connection was opened. Click Connect to try again.",\r
+        );\r
+      }, SCOPE_READY_TIMEOUT_MS);\r
+      updateConnectionStatus(false, "\u8FDE\u63A5\u4E2D\u2026");\r
+      connectionStatus.className = "status info";\r
+\r
+      parent.postMessage({ \r
+        pluginMessage: { \r
+          type: 'set-scope', \r
+          requestId,\r
+          scopeNodeId: state.verifiedNodeId,\r
+          scopeNodeType: state.verifiedNodeType,\r
+          allowEditVariable,\r
+          allowEditStyle\r
+        } \r
+      }, '*');\r
+    };\r
+\r
+    // Scope input validation listener\r
+    document.getElementById("scope-link").addEventListener("input", (e) => {\r
+      const link = e.target.value.trim();\r
+      const scopeStatus = document.getElementById("scope-status");\r
+\r
+      // Update copy button state\r
+      copyLinkButton.disabled = link.length === 0;\r
+\r
+      if (link.length === 0) {\r
+        state.verifiedNodeId = null;\r
+        state.verifiedNodeType = null;\r
+        scopeStatus.style.display = 'none';\r
+        return;\r
+      }\r
+\r
+      parent.postMessage({ pluginMessage: { type: 'validate-scope-link', link } }, '*');\r
+    });\r
+\r
+    // Copy link button click handler\r
+    copyLinkButton.onclick = () => {\r
+      copyTextToClipboard(scopeLinkInput.value, "Link copied to clipboard!");\r
+    };\r
+\r
+\r
+\r
+    // Function to update progress UI\r
+    function updateProgressUI(progressData) {\r
+      // Show progress container if hidden\r
+      progressContainer.classList.remove("hidden");\r
+\r
+      // Update progress bar\r
+      const progress = progressData.progress || 0;\r
+      progressBar.style.width = \`\${progress}%\`;\r
+      progressPercentage.textContent = \`\${progress}%\`;\r
+\r
+      // Update message\r
+      progressMessage.textContent = progressData.message || "Operation in progress";\r
+\r
+      // Update status text based on operation state\r
+      if (progressData.status === 'started') {\r
+        progressStatus.textContent = "Started";\r
+        progressStatus.className = "";\r
+      } else if (progressData.status === 'in_progress') {\r
+        progressStatus.textContent = "In Progress";\r
+        progressStatus.className = "";\r
+      } else if (progressData.status === 'completed') {\r
+        progressStatus.textContent = "Completed";\r
+        progressStatus.className = "operation-complete";\r
+\r
+        // Hide progress container after 5 seconds\r
+        setTimeout(() => {\r
+          progressContainer.classList.add("hidden");\r
+        }, 5000);\r
+      } else if (progressData.status === 'error') {\r
+        progressStatus.textContent = "Error";\r
+        progressStatus.className = "operation-error";\r
+      }\r
+    }\r
+\r
+    // Send operation progress update to server\r
+    function sendProgressUpdateToServer(progressData) {\r
+      if (!state.connected || !state.socket) {\r
+        console.error("Cannot send progress update: socket not connected");\r
+        return;\r
+      }\r
+\r
+      console.log("Sending progress update to server:", progressData);\r
+\r
+      state.socket.send(\r
+        JSON.stringify({\r
+          id: state.activeRequestId || progressData.commandId,\r
+          type: "progress_update",\r
+          channel: state.channel,\r
+          message: {\r
+            id: state.activeRequestId || progressData.commandId,\r
+            type: "progress_update",\r
+            data: progressData\r
+          }\r
+        })\r
+      );\r
+    }\r
+\r
+    // Reset progress UI\r
+    function resetProgressUI() {\r
+      progressContainer.classList.add("hidden");\r
+      progressBar.style.width = "0%";\r
+      progressMessage.textContent = "\u65E0\u8FDB\u884C\u4E2D\u7684\u64CD\u4F5C";\r
+      progressStatus.textContent = "\u672A\u5F00\u59CB";\r
+      progressStatus.className = "";\r
+      progressPercentage.textContent = "0%";\r
+    }\r
+\r
+    // Listen for messages from the plugin code\r
+    window.onmessage = (event) => {\r
+      const message = event.data.pluginMessage;\r
+      if (!message) return;\r
+\r
+      console.log("Received message from plugin:", message);\r
+\r
+      switch (message.type) {\r
+        case "init-settings":\r
+          if (message.settings) {\r
+            if (message.settings.serverPort) {\r
+              portInput.value = message.settings.serverPort;\r
+              state.serverPort = message.settings.serverPort;\r
+            }\r
+            if (message.settings.channel) {\r
+              state.channel = message.settings.channel;\r
+            }\r
+          }\r
+          updateChannelCard(false);\r
+          break;\r
+        case "plugin-version":\r
+          state.pluginVersion = message.version;\r
+          break;\r
+        case "scope-ready": {\r
+          const pending = state.pendingScopeRequest;\r
+          if (!pending || message.requestId !== pending.requestId) {\r
+            break;\r
+          }\r
+\r
+          // Consume the acknowledgement (and cancel its timeout) before opening\r
+          // the socket so a duplicate acknowledgement cannot create a second\r
+          // connection and the bound cannot fire against a served request.\r
+          clearPendingScopeRequest();\r
+          state.pluginVersion = message.pluginVersion;\r
+          connectToServer(pending.port);\r
+          break;\r
+        }\r
+        case "connection-status":\r
+          updateConnectionStatus(message.connected, message.message);\r
+          break;\r
+        case "auto-connect":\r
+          connectButton.click();\r
+          break;\r
+        case "auto-disconnect":\r
+          if (state.connected) connectButton.click();\r
+          break;\r
+        case "command-result":\r
+          // Forward the result from plugin code back to WebSocket\r
+          sendSuccessResponse(message.id, message.result);\r
+          state.activeRequestId = null;\r
+          break;\r
+        case "command-error":\r
+          // Forward the error from plugin code back to WebSocket\r
+          sendErrorResponse(message.id, message.error);\r
+          state.activeRequestId = null;\r
+          break;\r
+        case "scope-validation-result":\r
+          const scopeStatus = document.getElementById("scope-status");\r
+          if (message.valid) {\r
+            state.verifiedNodeId = message.nodeId;\r
+            state.verifiedNodeType = message.nodeType;\r
+            const scopeLabel = message.nodeType === 'PAGE' ? '\u9875\u9762' : '\u56FE\u5C42';\r
+            scopeStatus.textContent = \`\u2713 \u53EF\u7F16\u8F91\u8303\u56F4\uFF1A[\${scopeLabel}] \${message.nodeName}\`;\r
+            scopeStatus.style.color = '#1a7f37'; // Green\r
+            scopeStatus.style.display = 'block';\r
+          } else {\r
+            state.verifiedNodeId = null;\r
+            state.verifiedNodeType = null;\r
+            scopeStatus.textContent = \`\u2717 \${message.reason}\`;\r
+            scopeStatus.style.color = '#c0392b'; // Red\r
+            scopeStatus.style.display = 'block';\r
+          }\r
+          break;\r
+        case "command_progress":\r
+          // Update UI with progress information\r
+          updateProgressUI(message);\r
+          // Forward progress update to server\r
+          sendProgressUpdateToServer(message);\r
+          break;\r
+      }\r
+    };\r
+\r
+    // Ensure socket is closed when plugin window is closed\r
+    window.addEventListener('beforeunload', () => {\r
+      disconnectFromServer();\r
+    });\r
+  <\/script>\r
+</body>\r
+\r
+</html>\r
 `, { width: 350, height: 450 });
   figma.ui.postMessage({ type: "plugin-version", version: PLUGIN_VERSION });
   figma.ui.onmessage = async (msg) => {

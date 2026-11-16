@@ -1,6 +1,6 @@
 {
   "name": "figma-mcp-server",
-  "version": "1.0.7",
+  "version": "1.0.1",
   "description": "Unified Figma MCP server: REST headless read + live plugin-bridge read/write",
   "type": "module",
   "main": "dist/index.js",
