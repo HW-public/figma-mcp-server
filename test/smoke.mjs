@@ -1,10 +1,14 @@
 // 冒烟测试：spawn server → MCP 握手 → tools/list 断言 → REST 未配置错误路径
 import { spawn } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
-const serverEntry = join(root, 'dist', 'index.js');
+// 优先测 bundle（发布产物），不存在则退到 tsc 输出
+const bundleEntry = join(root, 'dist', 'bundle', 'index.mjs');
+const tscEntry = join(root, 'dist', 'index.js');
+const serverEntry = existsSync(bundleEntry) ? bundleEntry : tscEntry;
 
 const child = spawn(process.execPath, [serverEntry], {
     stdio: ['pipe', 'pipe', 'inherit'],

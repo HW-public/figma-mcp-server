@@ -281,7 +281,7 @@ figma.ui.onmessage = async (msg: any) => {
             break;
         // Local UI window controls (minimize to a slim bar; connection unaffected)
         case "__ui_minimize":
-            figma.ui.resize(200, 44);
+            figma.ui.resize(200, 36);
             break;
         case "__ui_restore":
             figma.ui.resize(350, 450);
@@ -289,7 +289,7 @@ figma.ui.onmessage = async (msg: any) => {
         case "validate-scope-link":
             const nodeId = parseNodeIdFromUrl(msg.link);
             if (!nodeId) {
-                figma.ui.postMessage({ type: "scope-validation-result", valid: false, reason: "Invalid Figma URL" });
+                figma.ui.postMessage({ type: "scope-validation-result", valid: false, reason: "Figma 链接无效" });
                 return;
             }
             const node = await figma.getNodeByIdAsync(nodeId);
@@ -302,7 +302,7 @@ figma.ui.onmessage = async (msg: any) => {
                     nodeType: node.type
                 });
             } else {
-                figma.ui.postMessage({ type: "scope-validation-result", valid: false, reason: "Node not found in current document" });
+                figma.ui.postMessage({ type: "scope-validation-result", valid: false, reason: "当前文档中找不到该节点" });
             }
             break;
         case "set-scope":

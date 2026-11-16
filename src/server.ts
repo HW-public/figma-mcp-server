@@ -8,7 +8,7 @@ import type { Config } from './config.js';
 /** 组装 MCP server：REST 工具 + live 工具合并暴露，调用时按名字路由 */
 export function createServer(config: Config, live: LiveChannel): Server {
     const server = new Server(
-        { name: 'figma-mcp-server', version: '1.0.0' },
+        { name: 'figma-mcp-server', version: '1.0.5' },
         { capabilities: { tools: {} } },
     );
     const restHandlers = makeRestHandlers(config);

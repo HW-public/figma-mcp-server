@@ -1,11 +1,12 @@
 import { spawn, type ChildProcess } from 'node:child_process';
-import { createRequire } from 'node:module';
+import { createRequire as nodeCreateRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import type { Config } from '../config.js';
 
-const require = createRequire(import.meta.url);
+// 绑定名避开 esbuild banner 注入的 createRequire/require，防止 bundle 重复声明
+const nodeRequire = nodeCreateRequire(import.meta.url);
 
 export interface LiveStatus {
     socket: 'running' | 'stopped';
@@ -15,7 +16,7 @@ export interface LiveStatus {
 
 /** 解析 figma-edit-mcp 包内的 dist 文件绝对路径（exports 可能限制子路径，故从 package.json 定位） */
 function resolveFigmaEditDist(...segments: string[]): string {
-    const pkgJson = require.resolve('figma-edit-mcp/package.json');
+    const pkgJson = nodeRequire.resolve('figma-edit-mcp/package.json');
     return join(dirname(pkgJson), 'dist', ...segments);
 }
 
@@ -75,7 +76,7 @@ export class LiveChannel {
     private async connectBridge(): Promise<void> {
         try {
             const serverPath = resolveFigmaEditDist('server.js');
-            this.client = new Client({ name: 'figma-mcp-server-live-proxy', version: '1.0.0' });
+            this.client = new Client({ name: 'figma-mcp-server-live-proxy', version: '1.0.5' });
             this.transport = new StdioClientTransport({
                 command: process.execPath,
                 args: [serverPath],

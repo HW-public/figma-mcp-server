@@ -6559,415 +6559,265 @@ Processing annotation ${i + 1}/${annotations.length}:`,
   }
   var PLUGIN_VERSION = true ? "2.3.3" : "unknown";
   figma.showUI(`<!DOCTYPE html>
-<html>
+<html lang="zh-CN">
 
 <head>
   <meta charset="utf-8" />
-  <title>Figma Edit MCP Plugin</title>
   <style>
+    :root {
+      --bg: #ffffff;
+      --text: #1f2328;
+      --text-2: #6b7280;
+      --text-3: #9ca3af;
+      --border: #e5e7eb;
+      --fill: #f6f7f8;
+      --fill-2: #eef1f4;
+      --primary: #18a0fb;
+      --primary-hover: #0d8ee0;
+      --primary-soft: #eaf5fe;
+      --green: #1a7f37;
+      --green-bg: #e6f6ec;
+      --red: #c0392b;
+      --radius: 8px;
+    }
+
+    * { box-sizing: border-box; }
+
     body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
-        Helvetica, Arial, sans-serif;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+        "Microsoft YaHei", Roboto, Helvetica, Arial, sans-serif;
       margin: 0;
-      padding: 20px;
-      color: #e0e0e0;
-      background-color: #1e1e1e;
+      padding: 16px;
+      color: var(--text);
+      background: var(--bg);
+      font-size: 13px;
+      line-height: 1.5;
     }
 
-    .container {
+    .container { position: relative; display: flex; flex-direction: column; gap: 14px; }
+
+    /* ---- \u72B6\u6001\u6A2A\u5E45 ---- */
+    .status {
       display: flex;
-      flex-direction: column;
-      height: 100%;
-    }
-
-    h1 {
-      font-size: 16px;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      font-size: 13px;
       font-weight: 600;
-      margin-bottom: 10px;
-      color: #ffffff;
+      margin: 0;
     }
+    .status::before {
+      content: "";
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: currentColor;
+      flex: none;
+    }
+    .status.connected { background: var(--green-bg); color: var(--green); }
+    .status.disconnected { background: var(--fill-2); color: var(--text-2); }
+    .status.info { background: var(--primary-soft); color: var(--primary); }
 
-    h2 {
-      font-size: 14px;
-      font-weight: 600;
-      margin-top: 20px;
-      margin-bottom: 8px;
-      color: #ffffff;
+    /* ---- \u9891\u9053\u5361 ---- */
+    .channel-card {
+      padding: 12px;
+      background: var(--primary-soft);
+      border: 1px solid #d6e8fa;
+      border-radius: 12px;
     }
+    .channel-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+    .channel-title { font-size: 12px; color: var(--text-2); font-weight: 500; }
+    .channel-badge {
+      padding: 2px 10px; border-radius: 999px;
+      font-size: 11px; font-weight: 600;
+      background: var(--fill-2); color: var(--text-2);
+    }
+    .channel-badge.connected { background: #d7f0dd; color: var(--green); }
+    .channel-row { display: flex; align-items: stretch; gap: 8px; }
+    .channel-code {
+      flex: 1;
+      display: flex; align-items: center; justify-content: center;
+      font-family: Consolas, Menlo, monospace;
+      font-size: 20px; font-weight: 700; letter-spacing: 6px;
+      color: var(--primary); background: #ffffff;
+      border: 1px solid #d6e8fa; border-radius: var(--radius);
+      padding: 8px 10px; user-select: all; min-height: 40px;
+    }
+    .channel-code.empty { color: var(--text-3); font-size: 12px; letter-spacing: 1px; font-weight: 400; }
+    .channel-hint { font-size: 11px; color: var(--text-3); margin-top: 8px; }
+
+    /* ---- \u901A\u7528\u63A7\u4EF6 ---- */
+    .section { display: flex; flex-direction: column; gap: 6px; }
+    .section > label {
+      font-size: 12px; font-weight: 600; color: var(--text);
+      display: flex; align-items: baseline; justify-content: space-between;
+      margin: 0;
+    }
+    .label-hint { font-size: 11px; font-weight: 400; color: var(--text-3); }
+
+    .input-row { display: flex; gap: 8px; align-items: stretch; }
+    input[type="text"], input[type="number"], input:not([type]) {
+      flex: 1; min-width: 0;
+      border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 8px 10px; margin: 0;
+      font-size: 13px; background: var(--fill); color: var(--text);
+      transition: border-color 0.15s, background 0.15s;
+    }
+    input:focus { outline: none; border-color: var(--primary); background: #ffffff; }
+    input:disabled { opacity: 0.6; cursor: not-allowed; }
+    input[type="checkbox"] { width: auto; cursor: pointer; accent-color: var(--primary); }
 
     button {
-      background-color: #18a0fb;
-      border: 1px solid transparent;
-      color: white;
-      padding: 8px 12px;
-      border-radius: 6px;
-      margin: 0;
-      cursor: pointer;
-      font-size: 14px;
-      transition: background-color 0.2s;
+      border: none; border-radius: var(--radius);
+      padding: 8px 14px; margin: 0;
+      font-size: 13px; font-weight: 600;
+      cursor: pointer; transition: background-color 0.15s;
+      white-space: nowrap;
+    }
+    button.primary { background: var(--primary); color: #ffffff; }
+    button.primary:hover { background: var(--primary-hover); }
+    button.primary:disabled { background: #b9dff9; cursor: not-allowed; }
+    button.secondary { background: var(--fill-2); color: var(--text); }
+    button.secondary:hover { background: #e2e6ea; }
+    button:disabled { cursor: not-allowed; opacity: 0.6; }
+    button.btn-ghost {
+      background: #ffffff; border: 1px solid var(--border); color: var(--text-2);
+      padding: 8px 10px;
+    }
+    button.btn-ghost:hover:not(:disabled) { background: var(--fill); color: var(--text); }
+    button svg { pointer-events: none; display: block; }
+
+    .scope-status { font-size: 11px; display: none; }
+
+    .check-row { display: flex; flex-direction: column; gap: 6px; margin-top: 2px; }
+    .check-row label {
+      display: flex; align-items: center; gap: 8px;
+      font-size: 12px; font-weight: 400; color: var(--text-2);
+      cursor: pointer; margin: 0;
     }
 
-    button:hover {
-      background-color: #0d8ee0;
+    /* ---- \u8FDB\u5EA6 ---- */
+    .progress-panel {
+      padding: 10px 12px;
+      background: var(--fill); border: 1px solid var(--border); border-radius: 10px;
+      display: flex; flex-direction: column; gap: 6px;
     }
+    .progress-panel h2 { font-size: 12px; margin: 0; color: var(--text); }
+    #progress-message { font-size: 12px; color: var(--text-2); }
+    .progress-track { width: 100%; background: var(--fill-2); border-radius: 999px; height: 6px; overflow: hidden; }
+    #progress-bar { height: 100%; background: var(--primary); border-radius: 999px; transition: width 0.3s; }
+    .progress-meta { display: flex; justify-content: space-between; font-size: 11px; color: var(--text-3); }
 
-    button.secondary {
-      background-color: #3d3d3d;
-      color: #e0e0e0;
-    }
-
-    button.secondary:hover {
-      background-color: #4d4d4d;
-    }
-
-    button:disabled {
-      background-color: #333333;
-      color: #666666;
-      cursor: not-allowed;
-    }
-
-    input {
-      border: 1px solid #444444;
-      border-radius: 4px;
-      padding: 8px;
-      margin: 0;
-      font-size: 14px;
-      width: 100%;
-      box-sizing: border-box;
-      background-color: #2d2d2d;
-      color: #e0e0e0;
-    }
-
-    input[type="checkbox"] {
-      width: auto;
-      cursor: pointer;
-    }
-
-    label {
-      display: block;
-      margin-bottom: 4px;
-      font-size: 12px;
-      font-weight: 500;
-      color: #cccccc;
-    }
-
-    .status {
-      margin-bottom: 16px;
-      padding: 12px;
-      border-radius: 6px;
-      font-size: 14px;
-    }
-
-    .status.connected {
-      background-color: #1a472a;
-      color: #4ade80;
-    }
-
-    .status.disconnected {
-      background-color: #471a1a;
-      color: #ff9999;
-    }
-
-    .status.info {
-      background-color: #1a3147;
-      color: #66b3ff;
-    }
-
-    .section {
-      margin-bottom: 16px;
-    }
-
-    .hidden {
-      display: none;
-    }
-
-    .logo {
-      width: 50px;
-      height: 50px;
-    }
-
-    .header {
-      display: flex;
-      align-items: center;
-      margin-bottom: 16px;
-    }
-
-    .header-text {
-      margin-left: 12px;
-    }
-
-    .header-text h1 {
-      margin: 0;
-      font-size: 16px;
-    }
-
-    .header-text p {
-      margin: 4px 0 0 0;
-      font-size: 12px;
-      color: #999999;
-    }
-
-    .tabs {
-      display: flex;
-      border-bottom: 1px solid #444444;
-      margin-bottom: 16px;
-    }
-
-    .tab {
-      padding: 8px 16px;
-      cursor: pointer;
-      font-size: 14px;
-      font-weight: 500;
-      color: #999999;
-    }
-
-    .tab.active {
-      border-bottom: 2px solid #18a0fb;
-      color: #18a0fb;
-    }
-
-    .tab-content {
-      display: none;
-    }
-
-    .tab-content.active {
-      display: block;
-    }
-
-    .link {
-      color: #18a0fb;
-      text-decoration: none;
-      cursor: pointer;
-    }
-
-    .link:hover {
-      text-decoration: underline;
-    }
-
-    .header-logo {
-      padding: 16px;
-      border-radius: 16px;
-      background-color: #333;
-    }
-
-    .header-logo-image {
-      width: 24px;
-      height: 24px;
-      object-fit: contain;
-    }
-
-    /* Toast notification */
-    .toast {
-      position: fixed;
-      bottom: 20px;
-      left: 50%;
-      transform: translateX(-50%);
-      background-color: #333;
-      color: #fff;
-      padding: 8px 16px;
-      border-radius: 4px;
-      font-size: 14px;
-      opacity: 0;
-      transition: opacity 0.3s;
-      pointer-events: none;
-      z-index: 1000;
-    }
-
-    .toast.show {
-      opacity: 1;
-    }
-
-    .copy-btn {
-      background: rgba(0, 0, 0, 0.2);
-      border: 1px solid #ffffff;
-      padding: 2px 8px;
-      margin-left: 8px;
-      font-size: 11px;
-      font-weight: 500;
-      color: #ffffff;
-      border-radius: 4px;
-      cursor: pointer;
-      display: inline-flex;
-      align-items: center;
-      vertical-align: middle;
-      transition: all 0.2s;
-    }
-
-    .copy-btn:hover {
-      background-color: #ffffff;
-      color: #1a472a;
-      border-color: #ffffff;
-    }
-
-    button svg {
-      pointer-events: none;
-    }
-  </style>
-  <style>
-    /* ---- local minimize-to-slim-bar controls (added by local patch) ---- */
-    .header { position: relative; }
-    #minimize-btn {
-      position: absolute; top: 6px; right: 6px;
-      width: 24px; height: 24px; padding: 0;
-      background: transparent; border: none; border-radius: 4px;
-      color: #888; font-size: 15px; line-height: 1; cursor: pointer;
-    }
-    #minimize-btn:hover { color: #fff; background: #444; }
+    /* ---- \u6298\u53E0\u6761 / \u60AC\u6D6E\u94AE / \u6C14\u6CE1 ---- */
     #collapsed-bar {
       display: none; align-items: center; justify-content: space-between;
-      padding: 4px 8px; background: #2c2c2c; user-select: none;
+      padding: 6px 10px; background: var(--fill); border-top: 1px solid var(--border);
+      user-select: none;
     }
-    #collapsed-bar .bar-title { font-size: 11px; color: #999; }
+    #collapsed-bar .bar-title { font-size: 11px; color: var(--text-3); }
     #restore-btn {
       width: 24px; height: 24px; padding: 0;
-      background: transparent; border: none; border-radius: 4px;
-      color: #888; font-size: 13px; line-height: 1; cursor: pointer;
+      background: transparent; border: 1px solid var(--border); border-radius: 6px;
+      color: var(--text-3); font-size: 13px; line-height: 1; cursor: pointer;
     }
-    #restore-btn:hover { color: #fff; background: #444; }
+    #restore-btn:hover { color: var(--text); background: var(--fill-2); }
+
+    .minimize-fab {
+      position: absolute; top: -4px; right: -4px; z-index: 10;
+      width: 26px; height: 26px; padding: 0;
+      background: var(--fill); border: 1px solid var(--border); border-radius: 8px;
+      color: var(--text-3); font-size: 15px; line-height: 1; cursor: pointer;
+    }
+    .minimize-fab:hover { color: var(--text); background: var(--fill-2); }
+
+    .toast {
+      position: fixed; bottom: 16px; left: 50%;
+      transform: translateX(-50%);
+      background: #1f2328; color: #ffffff;
+      padding: 8px 16px; border-radius: 999px;
+      font-size: 12px;
+      opacity: 0; transition: opacity 0.3s;
+      pointer-events: none; z-index: 1000;
+    }
+    .toast.show { opacity: 1; }
+
+    .hidden { display: none !important; }
+    body.minimized { padding: 0; overflow: hidden; }
     body.minimized .container { display: none; }
-    body.minimized #collapsed-bar { display: flex; }
-    /* ---- channel card (local patch) ---- */
-    .channel-card {
-      margin: 0 0 12px 0; padding: 10px 12px;
-      background: #252526; border: 1px solid #3a3a3a; border-radius: 8px;
+    body.minimized #collapsed-bar {
+      display: flex;
+      height: 100vh;
+      align-items: center;
+      gap: 8px;
+      padding: 0 10px;
     }
-    .channel-label {
-      display: flex; align-items: center; gap: 8px;
-      font-size: 11px; color: #999; margin-bottom: 6px;
-    }
-    .channel-badge {
-      padding: 1px 8px; border-radius: 999px; font-size: 10px;
-      background: #3d3d3d; color: #bbb;
-    }
-    .channel-badge.connected { background: #1a5c2a; color: #7ee2a0; }
-    .channel-row { display: flex; align-items: center; gap: 8px; }
-    .channel-code {
-      flex: 1; font-family: Consolas, Menlo, monospace;
-      font-size: 20px; font-weight: 700; letter-spacing: 4px;
-      color: #18a0fb; background: #1b1b1c; border-radius: 6px;
-      padding: 6px 10px; text-align: center; user-select: all;
-    }
-    .channel-code.empty { color: #666; font-size: 12px; letter-spacing: 1px; font-weight: 400; }
-    .channel-hint { font-size: 10px; color: #777; margin-top: 6px; }
   </style>
 </head>
 
 <body>
   <div class="container">
-    <div class="header">
-      <div class="header-logo">
-        <img class="header-logo-image"
-          src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADwAAAA8CAMAAAANIilAAAAABGdBTUEAALGPC/xhBQAAAAFzUkdCAK7OHOkAAAAJcEhZcwAAEJwAABCcASbNOjQAAAB1UExURUdwTP////////////////39/f////////////////////////////7+/v////////////39/f////////////////////////////////////////////////////39/fn5+ejo6P///+rq6uXl5f////Ly8gf4a04AAAAkdFJOUwAOdkZCfz04zIgbT0pkIagnm7C9b6C2LWqSxBMyB11W2Ovsy3D12ZYAAALtSURBVEjHndcJt6ogEADgXNAUcWlxSQVN3/3/P/EBAgJpWdM9p5ue78xANE2n05vIUduffgvn1oA0bX+hvRc1DYjTPHe+tiGIoqhx4zTNq/y72lMURQtmqasuPc4dAmgwfWuZrqquiw8uNnC5BRJT3YXhIZ7Xris0oLjlmOrArz7VHpOb6wpNee0ITVMHvvd25/qgvtFwla8dpxV7xnTi7dbed7iuTY16lZoV7iXQb3cqRgjVgoviKTZSUw2719pbD2OEVu5yjnqeOpZ75lMMobVzfUcwC6lrofGJpdb3jGtj6TkkNKRWtXMsU+ciNdfQUwe+zZ7/vo1CYYgv39G/kShMS6mHL+g8F96K2Uqi52E6j3DFnsc4uR/hMwugYd9bOLoeSTvPE1yx4/sLh9B9fKbziHVM3z/G+dKb5wdKdysxsNCc4+2l/yk7EnrOVhwGBt9auqJ0t9gR13C4cl77bdil88SPuK9jxrXksHjab48Mwo+4ha3aSbZJ52JpC4GFbY7OdsVst4Lls/mKZe1y6fXTonS3RFsIN7C5dAJsO+WiI21jbd8xesFEtoUdLLjH+qGNJ9WRuj3MOOQNycaV6khvsLc0MxsD2Uq7bhcHuBZh4rFdujjT1c6GkaXtszCx3sW3MRRfNjwiI7EjGjGfFjZwUgM9CuNggqRVXz+vOGDTBOCP5UnHE73ghjK1jYNlEIma9UnHBb/qdkvq1MSQjk4yCvGk4UneQylLbWAIio3I1t26q4sNTuM01tqQe9+My5pYv9wk8Ypv92w7JpXYulGoD8aJ3C/bUUp8tW5EuTa2oXI7ZGLzahZYE0l03QqZWI8Lfh1lw+zxEoNIrF8Dm/NQT8rzgz+WP/oQmL6Ud4pud/4DZzMWPKjXZfJufOyiVzzKV4/609yelDaWiZsDc6+DSwOLxNqxeD/6Ah3zf674+Kyf3xUeDi3WDFIKzCpOv/5phB4MD+cs/OWXVdych/GBf/xJd4pL9+1i/wOElMO5v/co4wAAAABJRU5ErkJggg==" />
+    <button id="minimize-btn" class="minimize-fab" title="\u6700\u5C0F\u5316\u7A97\u53E3">\u2013</button>
+
+    <div id="connection-status" class="status disconnected">\u672A\u8FDE\u63A5 MCP \u670D\u52A1</div>
+
+    <div class="channel-card" id="channel-card">
+      <div class="channel-head">
+        <span class="channel-title">\u9891\u9053\u7801</span>
+        <span class="channel-badge" id="channel-badge">\u672A\u8FDE\u63A5</span>
       </div>
-      <div class="header-text">
-        <h1>Figma Edit MCP Plugin</h1>
-        <p>Connect Figma to AI Agents using MCP</p>
+      <div class="channel-row">
+        <code class="channel-code empty" id="channel-code">\u8FDE\u63A5\u540E\u663E\u793A</code>
+        <button class="btn-ghost" id="btn-copy-channel" title="\u590D\u5236\u9891\u9053\u7801" disabled>\u590D\u5236</button>
       </div>
-      <button id="minimize-btn" title="Minimize window">\u2013</button>
+      <div class="channel-hint">\u9996\u6B21\u8FDE\u63A5\u540E\u56FA\u5B9A\u4E0D\u53D8\uFF0CClaude \u7AEF\u81EA\u52A8\u52A0\u5165</div>
     </div>
 
-    <div class="tabs">
-      <div id="tab-connection" class="tab active">Connection</div>
-      <div id="tab-about" class="tab">About</div>
-    </div>
-
-    <div id="content-connection" class="tab-content active">
-      <div class="section">
-        <label for="scope-link">Link to Selection (Leave blank for Read-Only Mode for Nodes)</label>
-        <div style="display: flex; gap: 8px; align-items: stretch;">
-          <input type="text" id="scope-link" placeholder="Paste Figma Link for Editing" style="flex: 1;" />
-          <button id="btn-copy-link" class="secondary" disabled title="Copy Link">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-              stroke-linecap="round" stroke-linejoin="round" style="display: block;">
-              <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-            </svg>
-          </button>
-        </div>
-        <div id="scope-status" style="font-size: 11px; margin-top: 4px; display: none;"></div>
-        <div style="margin-top: 12px; display: flex; flex-direction: column; gap: 8px;">
-          <label style="display: flex; align-items: center; gap: 6px; font-weight: normal; font-size: 11px; cursor: pointer;">
-            <input type="checkbox" id="allow-edit-variable" />
-            Allow AI Agent to modify Variables
-          </label>
-          <label style="display: flex; align-items: center; gap: 6px; font-weight: normal; font-size: 11px; cursor: pointer;">
-            <input type="checkbox" id="allow-edit-style" />
-            Allow AI Agent to modify Styles
-          </label>
-        </div>
+    <div class="section">
+      <label for="scope-link">\u7F16\u8F91\u8303\u56F4 <span class="label-hint">\u7559\u7A7A\u4E3A\u53EA\u8BFB\u6A21\u5F0F</span></label>
+      <div class="input-row">
+        <input type="text" id="scope-link" placeholder="\u7C98\u8D34 Figma \u8282\u70B9\u6216\u753B\u677F\u94FE\u63A5" />
+        <button id="btn-copy-link" class="btn-ghost" disabled title="\u590D\u5236\u5F53\u524D\u9009\u4E2D\u9879\u94FE\u63A5">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+          </svg>
+        </button>
       </div>
-
-      <div class="channel-card" id="channel-card">
-        <div class="channel-label">
-          <span>\u9891\u9053\u7801 / Channel Code</span>
-          <span class="channel-badge" id="channel-badge">\u672A\u8FDE\u63A5</span>
-        </div>
-        <div class="channel-row">
-          <code class="channel-code empty" id="channel-code">\u8FDE\u63A5\u540E\u751F\u6210</code>
-          <button class="secondary" id="btn-copy-channel" title="\u590D\u5236\u9891\u9053\u7801" disabled
-            style="padding: 8px 10px; font-size: 12px;">\u590D\u5236</button>
-        </div>
-        <div class="channel-hint">\u9996\u6B21\u8FDE\u63A5\u540E\u56FA\u5B9A\u4E0D\u53D8\u5E76\u81EA\u52A8\u4FDD\u5B58\uFF0CClaude \u7AEF\u5C06\u81EA\u52A8\u52A0\u5165</div>
-      </div>
-
-      <div class="section" style="margin-bottom: 20px;">
-        <label for="port">WebSocket Server Port</label>
-        <div style="display: flex; gap: 8px; align-items: stretch;">
-          <input type="number" id="port" placeholder="3055" value="3055" min="1024" max="65535" style="flex: 1;" />
-          <button id="btn-connect" class="primary">Connect</button>
-        </div>
-      </div>
-
-      <div id="connection-status" class="status disconnected">
-        Not connected to Figma Edit MCP server
-      </div>
-
-
-
-      <!-- Add Progress Bar Section -->
-      <div id="progress-container" class="section hidden">
-        <h2>Operation Progress</h2>
-        <div id="progress-message">No operation in progress</div>
-        <div style="width: 100%; background-color: #444; border-radius: 4px; margin-top: 8px;">
-          <div id="progress-bar"
-            style="width: 0%; height: 8px; background-color: #18a0fb; border-radius: 4px; transition: width 0.3s;">
-          </div>
-        </div>
-        <div style="display: flex; justify-content: space-between; margin-top: 4px; font-size: 12px;">
-          <div id="progress-status">Not started</div>
-          <div id="progress-percentage">0%</div>
-        </div>
+      <div id="scope-status" class="scope-status"></div>
+      <div class="check-row">
+        <label><input type="checkbox" id="allow-edit-variable" />\u5141\u8BB8 AI \u4FEE\u6539\u53D8\u91CF</label>
+        <label><input type="checkbox" id="allow-edit-style" />\u5141\u8BB8 AI \u4FEE\u6539\u6837\u5F0F</label>
       </div>
     </div>
 
-    <div id="content-about" class="tab-content">
-      <div class="section">
-        <h2>About Figma Edit MCP Plugin</h2>
-        <p>
-          This plugin allows AI Agents (Cursor, GitHub Copilot, Claude Code, Antigravity) to communicate
-          with
-          Figma, enabling
-          AI-assisted design operations.
-          <a class="link" onclick="window.open(\`https://github.com/neozhehan/figma-edit-mcp\`, '_blank')">Github</a>
-        </p>
-        <p id="plugin-version-about">Version: (loading...)</p>
+    <div class="section">
+      <label for="port">\u670D\u52A1\u7AEF\u53E3 <span class="label-hint">WebSocket</span></label>
+      <div class="input-row">
+        <input type="number" id="port" placeholder="3055" value="3055" min="1024" max="65535" />
+        <button id="btn-connect" class="primary">\u8FDE\u63A5</button>
+      </div>
+    </div>
 
-        <h2>How to Use</h2>
-        <ol>
-          <li>Make sure the Figma EditMCP server is running</li>
-          <li>Connect to the server using the port number (default: 3055)</li>
-          <li>Once connected, you can interact with Figma through your AI assistant</li>
-        </ol>
+    <div id="progress-container" class="progress-panel hidden">
+      <h2>\u64CD\u4F5C\u8FDB\u5EA6</h2>
+      <div id="progress-message">\u65E0\u8FDB\u884C\u4E2D\u7684\u64CD\u4F5C</div>
+      <div class="progress-track">
+        <div id="progress-bar" style="width: 0%;"></div>
+      </div>
+      <div class="progress-meta">
+        <span id="progress-status">\u672A\u5F00\u59CB</span>
+        <span id="progress-percentage">0%</span>
       </div>
     </div>
   </div>
 
   <div id="collapsed-bar">
-    <span class="bar-title">Figma Edit MCP</span>
-    <button id="restore-btn" title="Restore window">\u25A1</button>
+    <span class="bar-title">Figma \u7F16\u8F91\u52A9\u624B</span>
+    <button id="restore-btn" title="\u8FD8\u539F\u7A97\u53E3">\u25A1</button>
   </div>
 
-  <div id="toast" class="toast">Copied to clipboard!</div>
+  <div id="toast" class="toast"></div>
 
   <script>
     // WebSocket connection state
@@ -6987,7 +6837,7 @@ Processing annotation ${i + 1}/${annotations.length}:`,
 
     // Bound on the Q11 handshake: plugin main must echo \`scope-ready\` for the
     // pending request within this window. Without a bound, a lost or never-sent
-    // acknowledgement leaves the UI at "Connecting..." forever with no stated
+    // acknowledgement leaves the UI at "\u8FDE\u63A5\u4E2D\u2026" forever with no stated
     // recovery (Change 5, P9-F9).
     const SCOPE_READY_TIMEOUT_MS = 5000;
 
@@ -7058,27 +6908,27 @@ Processing annotation ${i + 1}/${annotations.length}:`,
       connectionStatus.innerHTML =
         message ||
         (isConnected
-          ? "Connected to MCP server"
-          : "Not connected to MCP server");
+          ? "\u5DF2\u8FDE\u63A5 MCP \u670D\u52A1"
+          : "\u672A\u8FDE\u63A5 MCP \u670D\u52A1");
       connectionStatus.className = \`status \${isConnected ? "connected" : "disconnected"
         }\`;
 
       if (isConnected) {
-        connectButton.textContent = "Disconnect";
+        connectButton.textContent = "\u65AD\u5F00";
         connectButton.className = "secondary";
         connectButton.disabled = false;
         if (!state.verifiedNodeId) {
-          scopeLinkInput.placeholder = "Connected in Read-Only Mode";
+          scopeLinkInput.placeholder = "\u5DF2\u8FDE\u63A5\uFF08\u53EA\u8BFB\u6A21\u5F0F\uFF09";
         }
       } else {
-        if (message === "Connecting..." || message === "Disconnecting...") {
+        if (message === "\u8FDE\u63A5\u4E2D\u2026" || message === "\u65AD\u5F00\u4E2D\u2026") {
           connectButton.textContent = message;
           connectButton.disabled = true;
         } else {
-          connectButton.textContent = "Connect";
+          connectButton.textContent = "\u8FDE\u63A5";
           connectButton.className = "primary";
           connectButton.disabled = false;
-          scopeLinkInput.placeholder = "Paste Figma Link to Restrict Editing Scope";
+          scopeLinkInput.placeholder = "\u7C98\u8D34 Figma \u94FE\u63A5\u9650\u5B9A\u7F16\u8F91\u8303\u56F4";
         }
       }
       portInput.disabled = isConnected;
@@ -7087,7 +6937,7 @@ Processing annotation ${i + 1}/${annotations.length}:`,
       document.getElementById("allow-edit-style").disabled = isConnected;
     }
 
-    function showToast(message = "Copied to clipboard!") {
+    function showToast(message = "\u5DF2\u590D\u5236\u5230\u526A\u8D34\u677F\uFF01") {
       toast.textContent = message;
       toast.classList.add("show");
       setTimeout(() => {
@@ -7113,7 +6963,7 @@ Processing annotation ${i + 1}/${annotations.length}:`,
 
     function copyChannelToClipboard() {
       if (state.channel) {
-        copyTextToClipboard(state.channel, "Channel code copied: " + state.channel);
+        copyTextToClipboard(state.channel, "\u9891\u9053\u7801\u5DF2\u590D\u5236\uFF1A" + state.channel);
       }
     }
 
@@ -7121,7 +6971,7 @@ Processing annotation ${i + 1}/${annotations.length}:`,
     async function connectToServer(port) {
       try {
         if (state.connected && state.socket) {
-          updateConnectionStatus(true, "Already connected to server");
+          updateConnectionStatus(true, "\u5DF2\u8FDE\u63A5\u5230\u670D\u52A1");
           return;
         }
 
@@ -7170,22 +7020,12 @@ Processing annotation ${i + 1}/${annotations.length}:`,
               // Successfully joined channel
               if (data.message && data.message.result) {
                 state.connected = true;
-                const channelName = data.channel;
                 updateChannelCard(true);
 
-                // Enhanced status message with copy button
-                const statusHtml = \`
-                    <div style="display: flex; align-items: center; justify-content: space-between;">
-                        <span>Plugin Connected\${!state.verifiedNodeId ? ' (Read-Only)' : ''}<br>Channel Code: <strong>\${channelName}</strong></span>
-                        <button class="copy-btn" onclick="copyChannelToClipboard()" title="Copy Channel Code" style="padding: 4px;">
-                           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-                        </button>
-                    </div>
-                \`;
-
+                // \u72B6\u6001\u6761\u53EA\u4FDD\u7559\u5355\u884C\u72B6\u6001\uFF08\u9891\u9053\u7801\u5DF2\u5728\u9891\u9053\u5361\u5C55\u793A\uFF0C\u4E0D\u91CD\u590D\uFF09
                 updateConnectionStatus(
                   true,
-                  statusHtml
+                  state.verifiedNodeId ? "\u5DF2\u8FDE\u63A5" : "\u5DF2\u8FDE\u63A5\uFF08\u53EA\u8BFB\u6A21\u5F0F\uFF09"
                 );
 
                 // Notify the plugin code
@@ -7193,7 +7033,7 @@ Processing annotation ${i + 1}/${annotations.length}:`,
                   {
                     pluginMessage: {
                       type: "notify",
-                      message: \`Connected to MCP server on port \${port} in channel: \${channelName}\`,
+                      message: \`\u5DF2\u8FDE\u63A5\u5230 MCP \u670D\u52A1\uFF08\u7AEF\u53E3 \${port}\uFF09\`,
                     },
                   },
                   "*"
@@ -7203,14 +7043,14 @@ Processing annotation ${i + 1}/${annotations.length}:`,
               const code = typeof data.code === "string" ? \` (\${data.code})\` : "";
               const detail = typeof data.message === "string"
                 ? data.message
-                : "The socket server refused the plugin join.";
-              closeStatusMessage = \`Join failed\${code}: \${detail}\`;
+                : "\u670D\u52A1\u62D2\u7EDD\u4E86\u8FDE\u63A5\u8BF7\u6C42\u3002";
+              closeStatusMessage = \`\u52A0\u5165\u9891\u9053\u5931\u8D25\${code}\uFF1A\${detail}\`;
               console.error(closeStatusMessage);
               updateConnectionStatus(false, closeStatusMessage);
               state.socket.close();
               return;
             } else if (data.type === "error") {
-              closeStatusMessage = \`Error: \${data.message}\`;
+              closeStatusMessage = \`\u9519\u8BEF\uFF1A\${data.message}\`;
               console.error("Error:", data.message);
               updateConnectionStatus(false, closeStatusMessage);
               state.socket.close();
@@ -7231,7 +7071,7 @@ Processing annotation ${i + 1}/${annotations.length}:`,
           if (closeStatusMessage) {
             updateConnectionStatus(false, closeStatusMessage);
           } else if (previouslyConnected) {
-            updateConnectionStatus(false, "Disconnected from server");
+            updateConnectionStatus(false, "\u5DF2\u65AD\u5F00\u8FDE\u63A5");
           } else {
             updateConnectionStatus(false, \`Failed to connect. Is the MCP server running on port \${port}?\`);
           }
@@ -7260,7 +7100,7 @@ Processing annotation ${i + 1}/${annotations.length}:`,
         state.socket.close();
         state.socket = null;
         state.connected = false;
-        updateConnectionStatus(false, "Disconnected from server");
+        updateConnectionStatus(false, "\u5DF2\u65AD\u5F00\u8FDE\u63A5");
       }
     }
 
@@ -7312,7 +7152,7 @@ Processing annotation ${i + 1}/${annotations.length}:`,
     async function sendCommand(command, params) {
       return new Promise((resolve, reject) => {
         if (!state.connected || !state.socket) {
-          reject(new Error("Not connected to server"));
+          reject(new Error("\u672A\u8FDE\u63A5\u5230\u670D\u52A1"));
           return;
         }
 
@@ -7417,7 +7257,7 @@ Processing annotation ${i + 1}/${annotations.length}:`,
     // Connect to server
     connectButton.onclick = () => {
       if (state.connected) {
-        updateConnectionStatus(false, "Disconnecting...");
+        updateConnectionStatus(false, "\u65AD\u5F00\u4E2D\u2026");
         connectionStatus.className = "status info";
         disconnectFromServer();
         return;
@@ -7429,8 +7269,8 @@ Processing annotation ${i + 1}/${annotations.length}:`,
 
       if (link.length > 0 && !state.verifiedNodeId) {
         // Invalid link state
-        scopeStatus.textContent = "Please provide a valid link or clear the field for Read-Only mode.";
-        scopeStatus.style.color = '#ff9999';
+        scopeStatus.textContent = "\u8BF7\u63D0\u4F9B\u6709\u6548\u7684 Figma \u94FE\u63A5\uFF0C\u6216\u6E05\u7A7A\u8F93\u5165\u6846\u4F7F\u7528\u53EA\u8BFB\u6A21\u5F0F\u3002";
+        scopeStatus.style.color = '#c0392b';
         scopeStatus.style.display = 'block';
         return;
       }
@@ -7454,7 +7294,7 @@ Processing annotation ${i + 1}/${annotations.length}:`,
           "The plugin did not confirm the editable scope in time. No connection was opened. Click Connect to try again.",
         );
       }, SCOPE_READY_TIMEOUT_MS);
-      updateConnectionStatus(false, "Connecting...");
+      updateConnectionStatus(false, "\u8FDE\u63A5\u4E2D\u2026");
       connectionStatus.className = "status info";
 
       parent.postMessage({ 
@@ -7555,8 +7395,8 @@ Processing annotation ${i + 1}/${annotations.length}:`,
     function resetProgressUI() {
       progressContainer.classList.add("hidden");
       progressBar.style.width = "0%";
-      progressMessage.textContent = "No operation in progress";
-      progressStatus.textContent = "Not started";
+      progressMessage.textContent = "\u65E0\u8FDB\u884C\u4E2D\u7684\u64CD\u4F5C";
+      progressStatus.textContent = "\u672A\u5F00\u59CB";
       progressStatus.className = "";
       progressPercentage.textContent = "0%";
     }
@@ -7583,7 +7423,6 @@ Processing annotation ${i + 1}/${annotations.length}:`,
           break;
         case "plugin-version":
           state.pluginVersion = message.version;
-          document.getElementById("plugin-version-about").textContent = "Version: " + message.version;
           break;
         case "scope-ready": {
           const pending = state.pendingScopeRequest;
@@ -7623,15 +7462,15 @@ Processing annotation ${i + 1}/${annotations.length}:`,
           if (message.valid) {
             state.verifiedNodeId = message.nodeId;
             state.verifiedNodeType = message.nodeType;
-            const scopeLabel = message.nodeType === 'PAGE' ? 'Page' : 'Layer';
-            scopeStatus.textContent = \`\u2713 Editable Scope: [\${scopeLabel}] \${message.nodeName}\`;
-            scopeStatus.style.color = '#4ade80'; // Green
+            const scopeLabel = message.nodeType === 'PAGE' ? '\u9875\u9762' : '\u56FE\u5C42';
+            scopeStatus.textContent = \`\u2713 \u53EF\u7F16\u8F91\u8303\u56F4\uFF1A[\${scopeLabel}] \${message.nodeName}\`;
+            scopeStatus.style.color = '#1a7f37'; // Green
             scopeStatus.style.display = 'block';
           } else {
             state.verifiedNodeId = null;
             state.verifiedNodeType = null;
             scopeStatus.textContent = \`\u2717 \${message.reason}\`;
-            scopeStatus.style.color = '#ff9999'; // Red
+            scopeStatus.style.color = '#c0392b'; // Red
             scopeStatus.style.display = 'block';
           }
           break;
@@ -7679,7 +7518,7 @@ Processing annotation ${i + 1}/${annotations.length}:`,
         break;
       // Local UI window controls (minimize to a slim bar; connection unaffected)
       case "__ui_minimize":
-        figma.ui.resize(200, 44);
+        figma.ui.resize(200, 36);
         break;
       case "__ui_restore":
         figma.ui.resize(350, 450);
@@ -7687,7 +7526,7 @@ Processing annotation ${i + 1}/${annotations.length}:`,
       case "validate-scope-link":
         const nodeId = parseNodeIdFromUrl(msg.link);
         if (!nodeId) {
-          figma.ui.postMessage({ type: "scope-validation-result", valid: false, reason: "Invalid Figma URL" });
+          figma.ui.postMessage({ type: "scope-validation-result", valid: false, reason: "Figma \u94FE\u63A5\u65E0\u6548" });
           return;
         }
         const node = await figma.getNodeByIdAsync(nodeId);
@@ -7700,7 +7539,7 @@ Processing annotation ${i + 1}/${annotations.length}:`,
             nodeType: node.type
           });
         } else {
-          figma.ui.postMessage({ type: "scope-validation-result", valid: false, reason: "Node not found in current document" });
+          figma.ui.postMessage({ type: "scope-validation-result", valid: false, reason: "\u5F53\u524D\u6587\u6863\u4E2D\u627E\u4E0D\u5230\u8BE5\u8282\u70B9" });
         }
         break;
       case "set-scope":

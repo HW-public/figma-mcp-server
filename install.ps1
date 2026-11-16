@@ -17,7 +17,7 @@
 
 .EXAMPLE
   # Standalone install (no repo clone, no build):
-  powershell -NoProfile -ExecutionPolicy Bypass -Command "iex ((New-Object System.Net.WebClient).DownloadString('https://raw.githubusercontent.com/HW-public/figma-mcp-server/main/install.ps1'))"
+  powershell -NoProfile -ExecutionPolicy Bypass -Command "iex ((New-Object System.Net.WebClient).DownloadString('https://cdn.jsdelivr.net/gh/HW-public/figma-mcp-server@master/install.ps1'))"
 
 .EXAMPLE
   # From a cloned repo:
@@ -26,7 +26,7 @@
 param(
   [string]$InstallDir = $(if ($PSScriptRoot) { Join-Path $PSScriptRoot 'release' } else { Join-Path $env:USERPROFILE 'figma-mcp-server' }),
   [string]$DownloadUrl = 'https://github.com/HW-public/figma-mcp-server/releases/latest/download/index.mjs',
-  [string]$EnvTemplateUrl = 'https://cdn.jsdelivr.net/gh/HW-public/figma-mcp-server@main/.env.example',
+  [string]$EnvTemplateUrl = 'https://cdn.jsdelivr.net/gh/HW-public/figma-mcp-server@master/.env.example',
   [string]$PluginCodeUrl = 'https://github.com/HW-public/figma-mcp-server/releases/latest/download/code.js',
   [string]$PluginManifestUrl = 'https://github.com/HW-public/figma-mcp-server/releases/latest/download/manifest.json',
   [string]$McpConfigPath = (Join-Path $env:USERPROFILE '.mcp.json'),
@@ -90,7 +90,13 @@ if ($needsInstall) {
   Write-Host "[..] Installing runtime dependency figma-edit-mcp@$FigmaEditVersion ..."
   Push-Location $InstallDir
   try {
-    npm install --omit=dev --no-audit --no-fund 2>&1 | Out-Null
+    # PS 5.1 下 $ErrorActionPreference='Stop' 会把原生命令的 stderr 行（如 npm warn）当错误终止脚本，
+    # 此处临时放宽并用 $LASTEXITCODE 判定真实失败
+    $prevEAP = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    & npm install --omit=dev --no-audit --no-fund | Out-Null
+    $ErrorActionPreference = $prevEAP
+    if ($LASTEXITCODE -ne 0) { throw "npm install failed (exit $LASTEXITCODE)" }
     Write-Host "[ok] Runtime dependency installed" -ForegroundColor Green
   } finally {
     Pop-Location
@@ -125,12 +131,20 @@ if (-not (Test-Path $envFile)) {
     Write-Host "[ok] Copied project .env -> $envFile" -ForegroundColor Green
     $created = $true
   } else {
-    try {
-      Invoke-WebRequest -Uri $EnvTemplateUrl -OutFile $envFile -UseBasicParsing
-      Write-Host "[ok] Created $envFile from template" -ForegroundColor Yellow
+    # Repo mode fallback: use the local template (avoids network dependency)
+    $localTemplate = $(if ($PSScriptRoot) { Join-Path $PSScriptRoot '.env.example' } else { $null })
+    if ($localTemplate -and (Test-Path $localTemplate)) {
+      Copy-Item $localTemplate $envFile
+      Write-Host "[ok] Created $envFile from local template" -ForegroundColor Yellow
       $created = $true
-    } catch {
-      New-Item -ItemType File -Path $envFile | Out-Null
+    } else {
+      try {
+        Invoke-WebRequest -Uri $EnvTemplateUrl -OutFile $envFile -UseBasicParsing
+        Write-Host "[ok] Created $envFile from template" -ForegroundColor Yellow
+        $created = $true
+      } catch {
+        New-Item -ItemType File -Path $envFile | Out-Null
+      }
     }
   }
   if ($created) {
@@ -196,7 +210,3 @@ Write-Host "  1. Figma desktop -> Plugins -> Development -> Import plugin from m
 Write-Host "  2. Select: $pluginDir\manifest.json" -ForegroundColor Yellow
 Write-Host "  3. Later use: Plugins -> Development -> Figma Edit MCP -> Connect" -ForegroundColor Yellow
 Write-Host "     (channel code is now stable & auto-saved; Claude joins automatically)" -ForegroundColor Yellow
-Write-Host ""
-Write-Host "Optional cleanup once figma-mcp-server works: remove old registrations:" -ForegroundColor Yellow
-Write-Host "  claude mcp remove FigmaEdit" -ForegroundColor Yellow
-Write-Host "  claude mcp remove figma-dev   (already removed if absent)" -ForegroundColor Yellow

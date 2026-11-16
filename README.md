@@ -22,7 +22,7 @@ Figma 插件: 本工程 plugin/ 目录自带（含最小化按钮补丁），一
 **一次性导入**（install.ps1 已自动把这两个文件放到安装目录）：
 
 1. Figma 桌面版 → `Plugins → Development → Import plugin from manifest…`
-2. 选择：`<安装目录>\plugin\manifest.json`（仓库模式即 `E:\IDEA\IDEAProject\Intellij_project\figma-mcp-server\plugin\manifest.json`）
+2. 选择 `<安装目录>\plugin\manifest.json`（一键安装模式脚本输出会打印完整路径）
 3. 以后使用：`Plugins → Development → Figma Edit MCP` → 点 **Connect** → 插件窗口别关（可点"–"缩成小条）
 
 插件改动后用 `pnpm plugin:build` 重新打包（Figma 里重开插件生效）。
@@ -40,7 +40,7 @@ Figma 插件: 本工程 plugin/ 目录自带（含最小化按钮补丁），一
 powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1
 
 # 独立模式（不克隆仓库，从 GitHub Release 下载 bundle）
-powershell -NoProfile -ExecutionPolicy Bypass -Command "iex ((New-Object System.Net.WebClient).DownloadString('https://raw.githubusercontent.com/HW-public/figma-mcp-server/main/install.ps1'))"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "iex ((New-Object System.Net.WebClient).DownloadString('https://cdn.jsdelivr.net/gh/HW-public/figma-mcp-server@master/install.ps1'))"
 ```
 
 安装脚本自动完成：拷贝/下载单文件 bundle → 安装运行时依赖（figma-edit-mcp）→ 生成 .env → 注册进 `~/.mcp.json` → 在 `settings.local.json` 启用。幂等可重跑，改配置前自动 `.bak` 备份。
@@ -51,7 +51,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command "iex ((New-Object System.
 pnpm install
 cp .env.example .env        # 填入 FIGMA_API_KEY（REST 通道需要；live 通道不需要）
 pnpm build
-claude mcp add figma-mcp-server -- node E:\IDEA\IDEAProject\Intellij_project\figma-mcp-server\dist\index.js
+claude mcp add figma-mcp-server -- node <仓库路径>\dist\index.js
 ```
 
 ## CI/CD
