@@ -13,7 +13,7 @@ import { base64ToBytes } from "../utils/exportUtils";
  */
 export async function setFillColor(params: any) {
     console.log("setFillColor", params);
-    const { nodeId, color, image, clear } = params || {};
+    const { nodeId, color, image, gradient, clear } = params || {};
 
     if (!nodeId) {
         throw new Error("Missing nodeId parameter");
@@ -68,6 +68,31 @@ export async function setFillColor(params: any) {
                 b: parseFloat(rgbColor.b),
             },
             opacity: parseFloat(rgbColor.a),
+        };
+    } else if (gradient) {
+        // 本地扩展：渐变填充 {type, stops:[{position,color:{r,g,b,a}}], gradientTransform?}
+        const gTypeMap: Record<string, string> = {
+            LINEAR: 'GRADIENT_LINEAR', GRADIENT_LINEAR: 'GRADIENT_LINEAR',
+            RADIAL: 'GRADIENT_RADIAL', GRADIENT_RADIAL: 'GRADIENT_RADIAL',
+            ANGULAR: 'GRADIENT_ANGULAR', GRADIENT_ANGULAR: 'GRADIENT_ANGULAR',
+            DIAMOND: 'GRADIENT_DIAMOND', GRADIENT_DIAMOND: 'GRADIENT_DIAMOND',
+        };
+        const gType = gTypeMap[String(gradient.type || 'LINEAR').toUpperCase()];
+        if (!gType) throw new Error(`node_set_fill: unsupported gradient type '${gradient.type}' (use LINEAR/RADIAL/ANGULAR/DIAMOND)`);
+        const stops = Array.isArray(gradient.stops) ? gradient.stops : [];
+        if (stops.length < 2) throw new Error("node_set_fill: gradient requires at least 2 stops [{position,color:{r,g,b,a}}]");
+        paintStyle = {
+            type: gType,
+            gradientTransform: gradient.gradientTransform || [[1, 0, 0], [0, 1, 0]],
+            gradientStops: stops.map((st: any) => ({
+                position: Math.min(1, Math.max(0, Number(st.position) || 0)),
+                color: {
+                    r: Math.min(1, Math.max(0, Number(st.color?.r) || 0)),
+                    g: Math.min(1, Math.max(0, Number(st.color?.g) || 0)),
+                    b: Math.min(1, Math.max(0, Number(st.color?.b) || 0)),
+                    a: st.color?.a !== undefined ? Math.min(1, Math.max(0, Number(st.color.a))) : 1,
+                },
+            })),
         };
     } else {
         const { url, bytesBase64, scaleMode, opacity } = image;

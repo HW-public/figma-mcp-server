@@ -102,8 +102,10 @@ export class LiveChannel {
                             p.resolve({
                                 total: msg.total,
                                 executed: msg.executed,
+                                failed: msg.failed,
                                 allOk: msg.allOk,
                                 results: msg.results,
+                                failures: msg.failures,
                             });
                         }
                     }
@@ -183,7 +185,7 @@ export class LiveChannel {
         }
     }
 
-    private request(msg: Record<string, unknown>): Promise<unknown> {
+    private request(msg: Record<string, unknown>, timeoutMs = 60_000): Promise<unknown> {
         return new Promise((resolve, reject) => {
             if (!this.socket || this.socket.destroyed) {
                 reject(new Error('LIVE_NOT_CONNECTED: broker 未连接'));
@@ -194,7 +196,7 @@ export class LiveChannel {
             this.socket.write(encodeFrame({ ...msg, id }));
             setTimeout(() => {
                 if (this.pending.delete(id)) reject(new Error(`请求超时: ${String(msg.type)}`));
-            }, 60_000);
+            }, timeoutMs);
         });
     }
 
@@ -206,12 +208,16 @@ export class LiveChannel {
         return this.request({ type: 'tools/call', name, args });
     }
 
-    /** 批量执行 live 工具（一次往返，broker 内逐条串行 + 汇总结果） */
+    /** 批量执行 live 工具（一次往返，broker 内逐条串行 + 汇总结果；大批量放宽超时） */
     async callBatch(
         ops: Array<{ name: string; args?: Record<string, unknown> }>,
         abortOnError?: boolean,
+        verbose?: boolean,
     ): Promise<unknown> {
-        return this.request({ type: 'tools/batch', ops, abortOnError: Boolean(abortOnError) });
+        return this.request(
+            { type: 'tools/batch', ops, abortOnError: Boolean(abortOnError), verbose: verbose !== false },
+            150_000,
+        );
     }
 
     async stop(): Promise<void> {

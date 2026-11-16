@@ -49,14 +49,18 @@ export interface BatchMsg {
     id: number;
     ops: Array<{ name: string; args?: Record<string, unknown> }>;
     abortOnError?: boolean;
+    /** false → 只返回 total/executed/failed + 失败项详情（默认 true 返回逐项结果） */
+    verbose?: boolean;
 }
 export interface BatchResultMsg {
     type: 'batch-result';
     id: number;
     total: number;
     executed: number;
+    failed: number;
     allOk: boolean;
-    results: Array<{ ok: true; result: unknown } | { ok: false; error: string }>;
+    results?: Array<Record<string, unknown>>;
+    failures?: Array<{ index: number; name: string; error: string }>;
 }
 export interface StatusMsg { type: 'status' }
 export interface StatusReportMsg {

@@ -1583,10 +1583,19 @@ Nothing was deleted. Read each listed consumer's current state with node_info (n
       strokeColor,
       arcData,
       pointCount,
-      innerRadius
+      innerRadius,
+      cornerRadius
     } = params || {};
     if (!type) {
       throw new Error("Missing shape type parameter");
+    }
+    if (cornerRadius !== void 0) {
+      if (typeof cornerRadius !== "number" || cornerRadius < 0) {
+        throw new Error(`create_shape: cornerRadius must be a non-negative number, got ${cornerRadius}`);
+      }
+      if (type.toUpperCase() !== "RECTANGLE") {
+        throw new Error(`create_shape: cornerRadius is only supported for RECTANGLE, got ${type}`);
+      }
     }
     assertNonEmptyExplicitName(
       name,
@@ -1648,6 +1657,9 @@ Nothing was deleted. Read each listed consumer's current state with node_info (n
         node.name = name;
       } else {
         node.name = type.charAt(0).toUpperCase() + type.slice(1).toLowerCase();
+      }
+      if (cornerRadius !== void 0 && upperType === "RECTANGLE") {
+        node.cornerRadius = cornerRadius;
       }
       if (fillColor) {
         node.fills = [{
@@ -1714,7 +1726,8 @@ Nothing was deleted. Read each listed consumer's current state with node_info (n
       counterAxisAlignItems = "MIN",
       layoutSizingHorizontal = "FIXED",
       layoutSizingVertical = "FIXED",
-      itemSpacing = 0
+      itemSpacing = 0,
+      cornerRadius
     } = params || {};
     assertNonEmptyExplicitName(
       name,
@@ -1730,6 +1743,12 @@ Nothing was deleted. Read each listed consumer's current state with node_info (n
       frame.y = y;
       frame.resize(width, height);
       frame.name = name;
+      if (cornerRadius !== void 0) {
+        if (typeof cornerRadius !== "number" || cornerRadius < 0) {
+          throw new Error(`create_frame: cornerRadius must be a non-negative number, got ${cornerRadius}`);
+        }
+        frame.cornerRadius = cornerRadius;
+      }
       if (layoutMode !== "NONE") {
         frame.layoutMode = layoutMode;
         frame.layoutWrap = layoutWrap;
@@ -1823,7 +1842,12 @@ Nothing was deleted. Read each listed consumer's current state with node_info (n
       fontColor = { r: 0, g: 0, b: 0, a: 1 },
       // Default to black
       name,
-      parentId
+      parentId,
+      width,
+      textAlign,
+      textAlignHorizontal,
+      lineHeight,
+      letterSpacing
     } = params || {};
     assertNonEmptyExplicitName(
       name,
@@ -1845,6 +1869,34 @@ Nothing was deleted. Read each listed consumer's current state with node_info (n
       });
       textNode.fontName = { family: "Inter", style: fontStyle };
       textNode.fontSize = fontSize;
+      if (lineHeight !== void 0) {
+        if (typeof lineHeight === "number") {
+          textNode.lineHeight = { unit: "PIXELS", value: lineHeight };
+        } else if (lineHeight && typeof lineHeight === "object") {
+          const unitMap = { PIXELS: "PIXELS", PERCENT: "PERCENT", AUTO: "AUTO" };
+          const unit = unitMap[String(lineHeight.unit || "PIXELS").toUpperCase()];
+          if (!unit) throw new Error(`create_text: lineHeight.unit must be PIXELS/PERCENT/AUTO`);
+          textNode.lineHeight = unit === "AUTO" ? { unit: "AUTO" } : { unit, value: Number(lineHeight.value) || 0 };
+        }
+      }
+      if (letterSpacing !== void 0) {
+        const spValue = typeof letterSpacing === "number" ? { unit: "PIXELS", value: letterSpacing } : { unit: String(letterSpacing.unit || "PIXELS").toUpperCase() === "PERCENT" ? "PERCENT" : "PIXELS", value: Number(letterSpacing.value) || 0 };
+        textNode.letterSpacing = spValue;
+      }
+      if (width !== void 0) {
+        if (typeof width !== "number" || width <= 0) {
+          throw new Error(`create_text: width must be a positive number, got ${width}`);
+        }
+        textNode.textAutoResize = "HEIGHT";
+        textNode.resize(width, textNode.height);
+      }
+      const alignInput = textAlignHorizontal != null ? textAlignHorizontal : textAlign;
+      if (alignInput !== void 0) {
+        const alignMap = { LEFT: "LEFT", CENTER: "CENTER", RIGHT: "RIGHT", JUSTIFIED: "JUSTIFIED" };
+        const align = alignMap[String(alignInput).toUpperCase()];
+        if (!align) throw new Error(`create_text: textAlignHorizontal must be LEFT/CENTER/RIGHT/JUSTIFIED, got ${alignInput}`);
+        textNode.textAlignHorizontal = align;
+      }
       await setCharacters(textNode, text);
       const paintStyle = {
         type: "SOLID",
@@ -2458,7 +2510,7 @@ Nothing was deleted. Read each listed consumer's current state with node_info (n
   // plugin/handlers/stylingHandlers.ts
   async function setFillColor(params) {
     console.log("setFillColor", params);
-    const { nodeId, color, image, clear } = params || {};
+    const { nodeId, color, image, gradient, clear } = params || {};
     if (!nodeId) {
       throw new Error("Missing nodeId parameter");
     }
@@ -2503,6 +2555,37 @@ Nothing was deleted. Read each listed consumer's current state with node_info (n
           b: parseFloat(rgbColor.b)
         },
         opacity: parseFloat(rgbColor.a)
+      };
+    } else if (gradient) {
+      const gTypeMap = {
+        LINEAR: "GRADIENT_LINEAR",
+        GRADIENT_LINEAR: "GRADIENT_LINEAR",
+        RADIAL: "GRADIENT_RADIAL",
+        GRADIENT_RADIAL: "GRADIENT_RADIAL",
+        ANGULAR: "GRADIENT_ANGULAR",
+        GRADIENT_ANGULAR: "GRADIENT_ANGULAR",
+        DIAMOND: "GRADIENT_DIAMOND",
+        GRADIENT_DIAMOND: "GRADIENT_DIAMOND"
+      };
+      const gType = gTypeMap[String(gradient.type || "LINEAR").toUpperCase()];
+      if (!gType) throw new Error(`node_set_fill: unsupported gradient type '${gradient.type}' (use LINEAR/RADIAL/ANGULAR/DIAMOND)`);
+      const stops = Array.isArray(gradient.stops) ? gradient.stops : [];
+      if (stops.length < 2) throw new Error("node_set_fill: gradient requires at least 2 stops [{position,color:{r,g,b,a}}]");
+      paintStyle = {
+        type: gType,
+        gradientTransform: gradient.gradientTransform || [[1, 0, 0], [0, 1, 0]],
+        gradientStops: stops.map((st) => {
+          var _a, _b, _c, _d;
+          return {
+            position: Math.min(1, Math.max(0, Number(st.position) || 0)),
+            color: {
+              r: Math.min(1, Math.max(0, Number((_a = st.color) == null ? void 0 : _a.r) || 0)),
+              g: Math.min(1, Math.max(0, Number((_b = st.color) == null ? void 0 : _b.g) || 0)),
+              b: Math.min(1, Math.max(0, Number((_c = st.color) == null ? void 0 : _c.b) || 0)),
+              a: ((_d = st.color) == null ? void 0 : _d.a) !== void 0 ? Math.min(1, Math.max(0, Number(st.color.a))) : 1
+            }
+          };
+        })
       };
     } else {
       const { url, bytesBase64, scaleMode, opacity } = image;
@@ -5954,6 +6037,27 @@ Processing annotation ${i + 1}/${annotations.length}:`,
           type: variable.resolvedType
         };
       }
+      case "ADD_MODE": {
+        const { collectionId, modeName } = params;
+        if (!collectionId) throw new Error("Missing collectionId for ADD_MODE");
+        assertNonEmptyExplicitName(
+          modeName,
+          "modeName",
+          "variable_manage ADD_MODE",
+          "modeName is required to create a new mode."
+        );
+        const collection = await figma.variables.getVariableCollectionByIdAsync(collectionId);
+        if (!collection) throw new Error(`Collection not found: ${collectionId}`);
+        if (collection.remote) {
+          throw new Error(`Operation Denied: '${collection.name}' is a remote library asset (style/variable/component) and is read-only in this file. Edit it in its source library.`);
+        }
+        const existing = collection.modes.find((m) => m.name === modeName);
+        if (existing) {
+          return { modeId: existing.modeId, created: false, modes: collection.modes };
+        }
+        const modeId = collection.addMode(modeName);
+        return { modeId, created: true, modes: collection.modes };
+      }
       case "UPDATE_VARIABLE": {
         const { variableId, name, value, modeId, description, currentVariableName, scopes } = params;
         if (!variableId) throw new Error("Missing variableId for update");
@@ -6557,7 +6661,7 @@ Processing annotation ${i + 1}/${annotations.length}:`,
     assertNotLocked(parent);
     assertNotInstanceParent(parent, "appended to");
   }
-  var PLUGIN_VERSION = true ? "2.3.3" : "unknown";
+  var PLUGIN_VERSION = true ? "1.0.7" : "unknown";
   figma.showUI(`<!DOCTYPE html>
 <html lang="zh-CN">
 

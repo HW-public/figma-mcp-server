@@ -9,6 +9,8 @@ import * as esbuild from 'esbuild';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const html = readFileSync(join(here, 'ui.html'), 'utf-8');
+// 版本单一来源：项目的 package.json（与 figma-mcp-server 同版本）
+const { version: APP_VERSION } = JSON.parse(readFileSync(join(here, '..', 'package.json'), 'utf-8'));
 
 await esbuild.build({
     entryPoints: [join(here, 'src', 'main.ts')],
@@ -18,7 +20,7 @@ await esbuild.build({
     target: ['es2018'],
     platform: 'browser',
     define: {
-        __PLUGIN_VERSION__: JSON.stringify('2.3.3'),
+        __PLUGIN_VERSION__: JSON.stringify(APP_VERSION),
         __html__: JSON.stringify(html),
     },
     logLevel: 'warning',

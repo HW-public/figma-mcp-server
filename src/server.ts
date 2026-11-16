@@ -1,5 +1,7 @@
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+
+const APP_VERSION = (globalThis as Record<string, unknown>).__APP_VERSION__ as string ?? '0.0.0-dev';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import type { LiveChannel } from './live/child-client.js';
 import { restToolDefs, makeRestHandlers } from './rest/tools.js';
@@ -8,7 +10,7 @@ import type { Config } from './config.js';
 /** 组装 MCP server：REST 工具 + live 工具合并暴露，调用时按名字路由 */
 export function createServer(config: Config, live: LiveChannel): Server {
     const server = new Server(
-        { name: 'figma-mcp-server', version: '1.0.7' },
+        { name: 'figma-mcp-server', version: APP_VERSION },
         { capabilities: { tools: {} } },
     );
     const restHandlers = makeRestHandlers(config);
@@ -23,8 +25,14 @@ export function createServer(config: Config, live: LiveChannel): Server {
                 })),
                 {
                     name: 'batch_execute',
-                    description: '批量执行多个 live 操作：一次调用传入 ops 数组（≤200 项），broker 内串行执行并逐项返回结果。'
-                        + '写大量节点时优先用它替代循环单调（减少往返与掉线窗口）。默认遇错继续，abortOnError=true 时首个失败即停。',
+                    description: '批量执行多个 live 工具，一次调用完成（≤200 项，broker 内串行执行）。'
+                        + ' 【示例】{"ops":[{"name":"create_frame","args":{"name":"卡片","width":300,"height":120,"cornerRadius":12}},'
+                        + '{"name":"create_text","args":{"parentId":"@op0.id","name":"标题","characters":"标题"}},'
+                        + '{"name":"node_set_fill","args":{"nodeId":"@op0.id","r":1,"g":0.38,"b":0.3}}],'
+                        + '"verbose":false}'
+                        + ' args 中的字符串 "@opN.字段路径" 会被替换为同批第 N 个 op 的返回字段（create_* 返回 {id,name}，故 "@op0.id" 引用第 0 个 op 创建的节点）。'
+                        + ' verbose:false 只返回 {total,executed,failed,allOk,failures}。abortOnError:true 时首个失败即停。'
+                        + ' node_set_fill 图片用 {"image":{"filePath":"C:\\\\绝对\\\\路径.png"}}（broker 读本地文件，勿用 localhost/file://）。',
                     inputSchema: {
                         type: 'object' as const,
                         properties: {
@@ -41,6 +49,7 @@ export function createServer(config: Config, live: LiveChannel): Server {
                                 maxItems: 200,
                             },
                             abortOnError: { type: 'boolean', default: false },
+                            verbose: { type: 'boolean', default: true },
                         },
                         required: ['ops'],
                     },
@@ -72,7 +81,7 @@ export function createServer(config: Config, live: LiveChannel): Server {
             if (!Array.isArray(ops) || ops.length === 0) {
                 return { isError: true, content: [{ type: 'text' as const, text: 'ops 必须是非空数组' }] };
             }
-            const result = await live.callBatch(ops, Boolean(input.abortOnError));
+            const result = await live.callBatch(ops, Boolean(input.abortOnError), input.verbose !== false);
             return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
         }
 

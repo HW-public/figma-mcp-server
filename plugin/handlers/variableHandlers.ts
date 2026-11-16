@@ -1108,6 +1108,29 @@ export async function handleVariableRequest(params: any) {
             };
         }
 
+        case 'ADD_MODE': {
+            // 本地扩展：上游 variable_manage 不支持多 mode（create collection 仅单 mode）
+            const { collectionId, modeName } = params;
+            if (!collectionId) throw new Error("Missing collectionId for ADD_MODE");
+            assertNonEmptyExplicitName(
+                modeName,
+                "modeName",
+                "variable_manage ADD_MODE",
+                "modeName is required to create a new mode.",
+            );
+            const collection = await figma.variables.getVariableCollectionByIdAsync(collectionId);
+            if (!collection) throw new Error(`Collection not found: ${collectionId}`);
+            if (collection.remote) {
+                throw new Error(`Operation Denied: '${collection.name}' is a remote library asset (style/variable/component) and is read-only in this file. Edit it in its source library.`);
+            }
+            const existing = collection.modes.find((m: any) => m.name === modeName);
+            if (existing) {
+                return { modeId: existing.modeId, created: false, modes: collection.modes };
+            }
+            const modeId = collection.addMode(modeName);
+            return { modeId, created: true, modes: collection.modes };
+        }
+
         case 'UPDATE_VARIABLE': {
             const { variableId, name, value, modeId, description, currentVariableName, scopes } = params;
             if (!variableId) throw new Error("Missing variableId for update");

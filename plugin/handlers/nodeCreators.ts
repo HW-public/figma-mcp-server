@@ -49,11 +49,22 @@ export async function createShape(params: any) {
         strokeColor,
         arcData,
         pointCount,
-        innerRadius
+        innerRadius,
+        cornerRadius,
     } = params || {};
 
     if (!type) {
         throw new Error("Missing shape type parameter");
+    }
+
+    // 本地扩展：创建时直接指定圆角（仅矩形类形状支持）
+    if (cornerRadius !== undefined) {
+        if (typeof cornerRadius !== "number" || cornerRadius < 0) {
+            throw new Error(`create_shape: cornerRadius must be a non-negative number, got ${cornerRadius}`);
+        }
+        if (type.toUpperCase() !== "RECTANGLE") {
+            throw new Error(`create_shape: cornerRadius is only supported for RECTANGLE, got ${type}`);
+        }
     }
 
     assertNonEmptyExplicitName(
@@ -125,6 +136,11 @@ export async function createShape(params: any) {
             node.name = name;
         } else {
             node.name = type.charAt(0).toUpperCase() + type.slice(1).toLowerCase();
+        }
+
+        // 本地扩展：创建时直接指定圆角
+        if (cornerRadius !== undefined && upperType === "RECTANGLE") {
+            (node as RectangleNode).cornerRadius = cornerRadius;
         }
 
         if (fillColor) {
@@ -214,6 +230,7 @@ export async function createFrame(params: any) {
         layoutSizingHorizontal = "FIXED",
         layoutSizingVertical = "FIXED",
         itemSpacing = 0,
+        cornerRadius,
     } = params || {};
 
     assertNonEmptyExplicitName(
@@ -234,6 +251,14 @@ export async function createFrame(params: any) {
         frame.y = y;
         frame.resize(width, height);
         frame.name = name;
+
+        // 本地扩展：创建时直接指定圆角（省一次 node_set_corner_radius 往返）
+        if (cornerRadius !== undefined) {
+            if (typeof cornerRadius !== "number" || cornerRadius < 0) {
+                throw new Error(`create_frame: cornerRadius must be a non-negative number, got ${cornerRadius}`);
+            }
+            frame.cornerRadius = cornerRadius;
+        }
 
         // Set layout mode if provided
         if (layoutMode !== "NONE") {
@@ -364,6 +389,11 @@ export async function createText(params: any) {
         fontColor = { r: 0, g: 0, b: 0, a: 1 }, // Default to black
         name,
         parentId,
+        width,
+        textAlign,
+        textAlignHorizontal,
+        lineHeight,
+        letterSpacing,
     } = params || {};
 
     assertNonEmptyExplicitName(
@@ -395,6 +425,38 @@ export async function createText(params: any) {
         });
         textNode.fontName = { family: "Inter", style: fontStyle };
         textNode.fontSize = fontSize;
+        // 本地扩展：lineHeight / letterSpacing（数字=像素，或 {value, unit: PIXELS|PERCENT|AUTO}）
+        if (lineHeight !== undefined) {
+            if (typeof lineHeight === 'number') {
+                textNode.lineHeight = { unit: 'PIXELS', value: lineHeight };
+            } else if (lineHeight && typeof lineHeight === 'object') {
+                const unitMap: Record<string, any> = { PIXELS: 'PIXELS', PERCENT: 'PERCENT', AUTO: 'AUTO' };
+                const unit = unitMap[String(lineHeight.unit || 'PIXELS').toUpperCase()];
+                if (!unit) throw new Error(`create_text: lineHeight.unit must be PIXELS/PERCENT/AUTO`);
+                textNode.lineHeight = unit === 'AUTO' ? { unit: 'AUTO' } : { unit, value: Number(lineHeight.value) || 0 };
+            }
+        }
+        if (letterSpacing !== undefined) {
+            const spValue = typeof letterSpacing === 'number'
+                ? { unit: 'PIXELS' as const, value: letterSpacing }
+                : { unit: (String(letterSpacing.unit || 'PIXELS').toUpperCase() === 'PERCENT' ? 'PERCENT' as const : 'PIXELS' as const), value: Number(letterSpacing.value) || 0 };
+            textNode.letterSpacing = spValue;
+        }
+        // 本地扩展：width 固定宽度自动换行；textAlign 水平对齐
+        if (width !== undefined) {
+            if (typeof width !== "number" || width <= 0) {
+                throw new Error(`create_text: width must be a positive number, got ${width}`);
+            }
+            textNode.textAutoResize = "HEIGHT";
+            textNode.resize(width, textNode.height);
+        }
+        const alignInput = textAlignHorizontal ?? textAlign;
+        if (alignInput !== undefined) {
+            const alignMap: Record<string, TextNode["textAlignHorizontal"]> = { LEFT: "LEFT", CENTER: "CENTER", RIGHT: "RIGHT", JUSTIFIED: "JUSTIFIED" };
+            const align = alignMap[String(alignInput).toUpperCase()];
+            if (!align) throw new Error(`create_text: textAlignHorizontal must be LEFT/CENTER/RIGHT/JUSTIFIED, got ${alignInput}`);
+            textNode.textAlignHorizontal = align;
+        }
         // setCharacters is async (loads fonts + writes characters); must be awaited
         // or the node has no text when we read/return it (characters:"", width:0).
         await setCharacters(textNode, text);
