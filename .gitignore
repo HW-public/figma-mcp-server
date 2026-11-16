@@ -1,7 +1,8 @@
 node_modules/
-dist/
+/dist/
 .env
 figma-assets/
 *.log
 .idea
 release/
+vendor-dist/

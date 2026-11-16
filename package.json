@@ -16,7 +16,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint src test",
     "lint:fix": "eslint src test --fix",
-    "bundle": "esbuild src/index.ts --bundle --platform=node --target=node20 --format=esm --outfile=dist/bundle/index.mjs --banner:js=\"import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);\" --log-level=warning && esbuild src/broker/broker.ts --bundle --platform=node --target=node20 --format=esm --outfile=dist/bundle/broker.mjs --banner:js=\"import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);\" --log-level=warning",
+    "bundle": "node scripts/bundle.mjs",
     "release": "pnpm run build && pnpm run bundle",
     "smoke": "node test/smoke.mjs",
     "plugin:build": "node plugin/build.mjs",
@@ -24,16 +24,19 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.14.0",
-    "dotenv": "^16.5.0",
-    "figma-edit-mcp": "2.3.3"
+    "dotenv": "^16.5.0"
   },
   "devDependencies": {
     "@figma/plugin-typings": "^1.142.0",
     "@types/node": "^22.0.0",
     "esbuild": "^0.28.2",
     "eslint": "^10.15.0",
+    "jimp": "^0.22.12",
     "tsx": "^4.19.0",
     "typescript": "^5.8.0",
-    "typescript-eslint": "^8.72.2"
+    "typescript-eslint": "^8.72.2",
+    "uuid": "^14.0.0",
+    "ws": "^8.20.0",
+    "zod": "^4.4.3"
   }
 }

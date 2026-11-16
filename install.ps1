@@ -4,8 +4,8 @@
   figma-mcp-server one-click installer (single-file bundle).
 
 .DESCRIPTION
-  Installs the prebuilt single-file bundle: copies (or downloads) index.mjs,
-  installs the runtime dependency (figma-edit-mcp, spawned as child process),
+  Installs the prebuilt single-file bundle: copies (or downloads) index.mjs and
+  broker.mjs (child-process code embedded, self-extracted at first start),
   creates a .env, registers the server in .mcp.json and enables it in
   settings.local.json. Idempotent — safe to re-run. Original config files
   are backed up to *.bak before modification.
@@ -35,7 +35,6 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $ServerName = 'figma-mcp-server'
-$FigmaEditVersion = '2.3.3'
 
 function Write-JsonNoBom($path, $obj) {
   $json = $obj | ConvertTo-Json -Depth 10
@@ -78,41 +77,7 @@ if ($localBroker -and (Test-Path $localBroker)) {
   Write-Host "[ok] Downloaded broker.mjs -> $InstallDir" -ForegroundColor Green
 }
 
-# --- 1.5 Runtime dependency (figma-edit-mcp, spawned as child process) --------
-# The bundle resolves figma-edit-mcp from <InstallDir>\node_modules, so the
-# install dir needs its own minimal node_modules even in repo mode.
-$runtimePkg = Join-Path $InstallDir 'package.json'
-$needsInstall = $true
-if (Test-Path $runtimePkg) {
-  try {
-    $pkg = Get-Content $runtimePkg -Raw | ConvertFrom-Json
-    if ($pkg.dependencies -and $pkg.dependencies.'figma-edit-mcp' -eq $FigmaEditVersion) { $needsInstall = $false }
-  } catch { $needsInstall = $true }
-}
-if ($needsInstall) {
-  Write-JsonNoBom $runtimePkg ([pscustomobject]@{
-    name = 'figma-mcp-runtime'
-    private = $true
-    version = '0.0.0'
-    dependencies = [pscustomobject]@{ 'figma-edit-mcp' = $FigmaEditVersion }
-  })
-  Write-Host "[..] Installing runtime dependency figma-edit-mcp@$FigmaEditVersion ..."
-  Push-Location $InstallDir
-  try {
-    # PS 5.1 下 $ErrorActionPreference='Stop' 会把原生命令的 stderr 行（如 npm warn）当错误终止脚本，
-    # 此处临时放宽并用 $LASTEXITCODE 判定真实失败
-    $prevEAP = $ErrorActionPreference
-    $ErrorActionPreference = 'Continue'
-    & npm install --omit=dev --no-audit --no-fund | Out-Null
-    $ErrorActionPreference = $prevEAP
-    if ($LASTEXITCODE -ne 0) { throw "npm install failed (exit $LASTEXITCODE)" }
-    Write-Host "[ok] Runtime dependency installed" -ForegroundColor Green
-  } finally {
-    Pop-Location
-  }
-} else {
-  Write-Host "[ok] Runtime dependency already present" -ForegroundColor Green
-}
+# --- 1.5 (已移除) 子进程产物自 v1.0.8 起内嵌于 broker.mjs，启动时自动落到 state 目录，无需安装 ---
 
 # --- 1.6 Figma plugin (self-contained single file + manifest) ------------------
 $pluginDir = Join-Path $InstallDir 'plugin'

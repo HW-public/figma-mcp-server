@@ -47,7 +47,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -Command "iex ((New-Object System.Net.WebClient).DownloadString('https://cdn.jsdelivr.net/gh/HW-public/figma-mcp-server@master/install.ps1'))"
 ```
 
-安装脚本自动完成：拷贝/下载 `index.mjs` + `broker.mjs` → 安装运行时依赖（figma-edit-mcp）→ 拷贝插件 → 生成 .env → 注册进 **`~/.claude.json`**（用户级，天然免启用）→ 自动清理旧版 `~/.mcp.json` 残留。幂等可重跑，改配置前自动 `.bak` 备份。
+安装脚本自动完成：拷贝/下载 `index.mjs` + `broker.mjs` → 拷贝内置（vendored，自维护）figma-edit-mcp server 端 → 拷贝插件 → 生成 .env → 注册进 **`~/.claude.json`**（用户级，天然免启用）→ 自动清理旧版 `~/.mcp.json` 残留。幂等可重跑，改配置前自动 `.bak` 备份。
 
 **方式二：手动**
 
@@ -135,6 +135,11 @@ pnpm release    # build + esbuild 单文件 bundle（dist/bundle/index.mjs）
 ```
 
 工程约定同 ssh-mcp-server：pnpm、ESM、strict TS、esbuild bundle、发版走 version + git tag。
+
+**自维护组件**：figma-edit-mcp server 端源码已并入主工程 `src/figma-edit-mcp/`（上游基线 2.3.3，MIT，
+升级上游 = 覆盖源码后把我们的定制 diff rebase 过去）。子进程代码由 `scripts/bundle.mjs` 一并打进
+broker.mjs，broker 以 `--fe-child=server|socket` spawn 自身完成路由——无任何独立产物，分发物只有
+`index.mjs` + `broker.mjs` 两个文件。Figma 插件端定制在 `plugin/`（Figma 必须从文件导入，无法内嵌）。
 
 ## 已知限制
 

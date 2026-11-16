@@ -10,11 +10,11 @@
  */
 
 import { createServer, type Socket } from 'node:net';
-import { spawn, execFileSync, type ChildProcess } from 'node:child_process';
-import { createRequire as nodeCreateRequire } from 'node:module';
+import { spawn, type ChildProcess } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
-import { dirname, join } from 'node:path';
+import { dirname } from 'node:path';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { loadConfig, persistChannel, type Config } from '../config.js';
@@ -22,13 +22,9 @@ import { encodeFrame, FrameDecoder } from './protocol.js';
 
 const APP_VERSION = (globalThis as Record<string, unknown>).__APP_VERSION__ as string ?? '0.0.0-dev';
 
-const nodeRequire = nodeCreateRequire(import.meta.url);
+/** 本文件路径：broker 以 `--fe-child=server|socket` spawn 自身，子进程在 bundle 内路由到对应入口 */
+const selfPath = fileURLToPath(import.meta.url);
 const VERSION = APP_VERSION;
-
-function resolveFigmaEditDist(...segments: string[]): string {
-    const pkgJson = nodeRequire.resolve('figma-edit-mcp/package.json');
-    return join(dirname(pkgJson), 'dist', ...segments);
-}
 
 function log(config: Config, line: string): void {
     const stamp = new Date().toISOString();
@@ -92,122 +88,17 @@ class Broker {
         });
         log(this.config, `监听 127.0.0.1:${this.config.brokerPort}，token=${this.token.slice(0, 6)}…`);
 
-        await this.ensureFigmaEditPatched();
         await this.spawnSocket();
         await this.connectBridge();
         this.startIdleTimer();
-    }
-
-    /** 给 figma-edit-mcp 打本地扩展补丁（幂等 + 语法自检）：① variable_manage 枚举加 ADD_MODE
-     *  ② node_set_fill 描述补充 image.filePath 用法。
-     *  注意：插入文本禁止含双引号（会截断目标文件里的字符串字面量）；写完用 node --check 自检，失败回滚。 */
-    private ensureFigmaEditPatched(): void {
-        try {
-            const serverPath = resolveFigmaEditDist('server.js');
-            const original = readFileSync(serverPath, 'utf-8');
-            let src = original;
-            let changed = false;
-
-            if (!src.includes('"ADD_MODE"')) {
-                const oldEnum = 'enum(["CREATE_COLLECTION", "CREATE_VARIABLE", "UPDATE_VARIABLE"])';
-                if (src.includes(oldEnum)) {
-                    src = src.replace(
-                        oldEnum,
-                        'enum(["CREATE_COLLECTION", "CREATE_VARIABLE", "UPDATE_VARIABLE", "ADD_MODE"]).describe("Action type; ADD_MODE adds a mode to an existing collection (requires collectionId + modeName, returns modeId)")',
-                    );
-                    changed = true;
-                } else {
-                    log(this.config, '警告: 未能定位 variable_manage 的 action 枚举，ADD_MODE 补丁未生效');
-                }
-            }
-
-            const fillAnchor = 'or `node_bind_variable` to bind a color token.';
-            if (!src.includes('For LOCAL image files use image')) {
-                if (src.includes(fillAnchor)) {
-                    src = src.replace(
-                        fillAnchor,
-                        `${fillAnchor} For LOCAL image files use image: { filePath: '<absolute path>' } (broker reads the file and converts; do NOT use file:// or localhost URLs).`,
-                    );
-                    changed = true;
-                } else {
-                    log(this.config, '警告: 未能定位 node_set_fill 描述，filePath 说明补丁未生效');
-                }
-            }
-
-            // ③ create_shape schema 放行 cornerRadius（插件 handler 已支持，schema 层此前拦截 Unrecognized key）
-            const shapeAnchor = 'useAbsolutePosition: external_exports.boolean().optional()';
-            if (!src.includes('cornerRadius: external_exports.number()') && src.includes(shapeAnchor)) {
-                src = src.replace(
-                    shapeAnchor,
-                    'cornerRadius: external_exports.number().min(0).optional().describe("Corner radius at creation; RECTANGLE only"), ' + shapeAnchor,
-                );
-                changed = true;
-            }
-
-            // ④ create_text schema 放行 width/textAlignHorizontal（锚点 fontWeight，唯一性守卫）
-            const textAnchor = 'fontWeight: external_exports';
-            const textMarker = 'width: external_exports.number().positive().optional().describe("Fixed width';
-            if (!src.includes(textMarker)) {
-                if (src.split(textAnchor).length === 2) {
-                    src = src.replace(
-                        textAnchor,
-                        'width: external_exports.number().positive().optional().describe("Fixed width; enables wrapping (textAutoResize=HEIGHT)"), textAlignHorizontal: external_exports.enum(["LEFT", "CENTER", "RIGHT", "JUSTIFIED"]).optional(), lineHeight: external_exports.any().optional().describe("number=pixels, or {value, unit: PIXELS|PERCENT|AUTO}"), letterSpacing: external_exports.any().optional().describe("number=pixels, or {value, unit: PIXELS|PERCENT}"), ' + textAnchor,
-                    );
-                    changed = true;
-                } else {
-                    log(this.config, `警告: create_text 补丁锚点不唯一（出现 ${src.split(textAnchor).length - 1} 次），未生效`);
-                }
-            }
-
-            // ⑤ create_frame schema 放行 cornerRadius（锚点 counterAxisAlignItems，唯一性守卫）
-            const frameAnchor = 'strokeWeight: external_exports';
-            const frameMarker = 'Corner radius at creation (frame)';
-            if (!src.includes(frameMarker)) {
-                if (src.split(frameAnchor).length === 2) {
-                    src = src.replace(
-                        frameAnchor,
-                        'cornerRadius: external_exports.number().min(0).optional().describe("' + frameMarker + '"), ' + frameAnchor,
-                    );
-                    changed = true;
-                } else {
-                    log(this.config, `警告: create_frame 补丁锚点不唯一（出现 ${src.split(frameAnchor).length - 1} 次），未生效`);
-                }
-            }
-
-            // ⑥ node_set_fill schema 放行 gradient（z.any() 宽松校验，插件侧精校）
-            const fillSchemaAnchor = 'image: external_exports';
-            if (!src.includes('gradient: external_exports.any()')) {
-                if (src.split(fillSchemaAnchor).length === 2) {
-                    src = src.replace(
-                        fillSchemaAnchor,
-                        'gradient: external_exports.any().optional().describe("Gradient fill: {type: LINEAR|RADIAL|ANGULAR|DIAMOND, stops: [{position, color: {r,g,b,a}}], gradientTransform?}"), ' + fillSchemaAnchor,
-                    );
-                    changed = true;
-                } else {
-                    log(this.config, `警告: node_set_fill 补丁锚点不唯一（${src.split(fillAnchor).length - 1} 次），未生效`);
-                }
-            }
-
-            if (!changed) return;
-            writeFileSync(serverPath, src);
-            try {
-                execFileSync(process.execPath, ['--check', serverPath]);
-                log(this.config, '已应用 figma-edit-mcp 本地补丁（ADD_MODE / filePath 说明）并通过语法自检');
-            } catch (e) {
-                writeFileSync(serverPath, original); // 回滚
-                log(this.config, `补丁语法自检失败，已回滚: ${(e as Error).message}`);
-            }
-        } catch (e) {
-            log(this.config, `figma-edit-mcp 补丁失败（非致命）: ${(e as Error).message}`);
-        }
     }
 
     // ---- Figma 链路（socket + figma-edit-mcp child） ----
 
     private spawnSocket(): void {
         try {
-            const socketPath = resolveFigmaEditDist('socket.js');
-            this.socketProc = spawn(process.execPath, [socketPath], {
+            // 子进程代码已 bundle 进本文件，spawn 自身 + argv 路由到 socket 桥入口
+            this.socketProc = spawn(process.execPath, [selfPath, '--fe-child=socket'], {
                 env: {
                     ...process.env,
                     FIGMA_EDIT_MCP_SOCKET_HOST: 'localhost',
@@ -231,13 +122,18 @@ class Broker {
         // socket 桥就绪需要一两秒，子进程连接可能撞上未就绪 → 重试至成功
         for (let attempt = 1; attempt <= 10; attempt++) {
             try {
-                const serverPath = resolveFigmaEditDist('server.js');
                 this.mcpClient = new Client({ name: 'figma-mcp-broker', version: VERSION });
-                const transport = new StdioClientTransport({ command: process.execPath, args: [serverPath] });
+                const transport = new StdioClientTransport({
+                    command: process.execPath,
+                    // 子进程代码已 bundle 进本文件，spawn 自身 + argv 路由到 MCP server 入口
+                    args: [selfPath, '--fe-child=server'],
+                    env: { ...process.env, FIGMA_MCP_CHANNEL_VERSION: VERSION },
+                });
                 await this.mcpClient.connect(transport);
                 const listed = await this.mcpClient.listTools();
                 this.childTools = listed.tools;
                 this.bridgeState = 'connected';
+                this.broadcastTools(); // 桥晚于客户端就绪时，主动补推工具表，避免瘦客户端停在空表
                 log(this.config, `figma-edit-mcp 已连接，工具 ${listed.tools.length} 个`);
                 if (this.config.channel) {
                     await this.joinChannel(this.config.channel);
@@ -539,6 +435,7 @@ class Broker {
                     bridge: this.bridgeState,
                     channel: this.currentChannel,
                 });
+                this.broadcastTools(); // 认证即推当前工具表（可能为空，桥就绪后还会再推）
             } else {
                 send({ type: 'invalid', message: 'auth failed' });
                 socket.destroy();
@@ -591,6 +488,14 @@ class Broker {
         }
     }
 
+    /** 向全部已认证客户端推送当前 live 工具表（认证时 + 桥就绪/变化时） */
+    private broadcastTools(): void {
+        const frame = encodeFrame({ type: 'tools', tools: this.childTools ?? [] });
+        for (const [, socket] of this.clients) {
+            if (!socket.destroyed) socket.write(frame);
+        }
+    }
+
     private startIdleTimer(): void {
         this.idleTimer = setInterval(() => {
             if (this.clients.size === 0 && Date.now() - this.lastEmptyAt > this.config.brokerIdleExitMs) {
@@ -610,12 +515,30 @@ class Broker {
 }
 
 // ---- 入口 ----
+// bundle 内包含 figma-edit-mcp 子进程代码；以 --fe-child=server|socket 被 spawn 时路由到对应入口，
+// 否则正常启动 broker。figma-child-* 为 ambient 声明（src/broker/child-entries.d.ts），
+// bundle 时由 scripts/bundle.mjs 别名到 src/figma-edit-mcp 的真实模块。
 
-const config = loadConfig();
-const broker = new Broker(config);
-process.on('SIGINT', () => broker.shutdown(130));
-process.on('SIGTERM', () => broker.shutdown(143));
-broker.start().catch((e) => {
-    console.error(`[broker] 启动失败: ${(e as Error).message}`);
-    process.exit(1);
-});
+const childArg = process.argv.find((a) => a.startsWith('--fe-child='));
+
+if (childArg) {
+    const mode = childArg.split('=')[1];
+    const run = mode === 'server'
+        ? import('figma-child-server').then((m) => m.runFigmaMcpServer())
+        : mode === 'socket'
+            ? import('figma-child-socket').then((m) => { m.runSocketBridge(); })
+            : Promise.reject(new Error(`未知 --fe-child 模式: ${mode}`));
+    run.catch((e) => {
+        console.error(`[fe-child:${mode}] 启动失败: ${(e as Error).message}`);
+        process.exit(1);
+    });
+} else {
+    const config = loadConfig();
+    const broker = new Broker(config);
+    process.on('SIGINT', () => broker.shutdown(130));
+    process.on('SIGTERM', () => broker.shutdown(143));
+    broker.start().catch((e) => {
+        console.error(`[broker] 启动失败: ${(e as Error).message}`);
+        process.exit(1);
+    });
+}
