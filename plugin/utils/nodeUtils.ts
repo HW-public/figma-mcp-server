@@ -365,6 +365,25 @@ export function describeCreatorSurvivorParent(
 }
 
 /**
+ * figma-mcp-server 定制：计算某节点在画布上的绝对原点。
+ * 沿 parent 链累加祖先的 x/y（遇 PAGE / DOCUMENT 停，PAGE 自身不计入），
+ * 供 coordinateSpace=canvas 时把画布绝对坐标换算成父级相对坐标。
+ */
+export async function getAbsoluteOffset(node: any): Promise<{ x: number; y: number }> {
+    let offsetX = 0;
+    let offsetY = 0;
+    let current = node ? node.parent : null;
+    while (current && current.type !== 'PAGE' && current.type !== 'DOCUMENT') {
+        if ('x' in current && 'y' in current) {
+            offsetX += current.x;
+            offsetY += current.y;
+        }
+        current = current.parent;
+    }
+    return { x: offsetX, y: offsetY };
+}
+
+/**
  * Re-throws a creator's initiating error after best-effort cleanup.
  *
  * A failed cleanup is itself a durable mutation outcome, but it must not mask

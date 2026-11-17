@@ -81,11 +81,31 @@ export async function setFillColor(params: any) {
         };
         const gType = gTypeMap[String(gradient.type || 'LINEAR').toUpperCase()];
         if (!gType) throw new Error(`node_set_fill: unsupported gradient type '${gradient.type}' (use LINEAR/RADIAL/ANGULAR/DIAMOND)`);
+        // figma-mcp-server 定制：gradientTransform 便捷角度 —— 支持 number 或 {angle:number}（度，顺时针，0=从上到下渐变，180=向上），
+        // 数组形式照旧透传。换算为绕中心 (0.5,0.5) 的标准旋转矩阵：
+        //   x' = cos*(x-0.5) + 0.5 - sin*(y-0.5)
+        //   y' = sin*(x-0.5) + 0.5 + cos*(y-0.5)
+        // 即 [[cos, -sin, 0.5-0.5*cos+0.5*sin], [sin, cos, 0.5-0.5*sin-0.5*cos]]；angle=0 时退化为 Figma 默认 [[1,0,0],[0,1,0]]
+        let gradientTransform: any = gradient.gradientTransform || [[1, 0, 0], [0, 1, 0]];
+        let gradientTransformNote = "";
+        const angleDeg = typeof gradientTransform === "number"
+            ? gradientTransform
+            : (!Array.isArray(gradientTransform) && typeof gradientTransform?.angle === "number" ? gradientTransform.angle : null);
+        if (angleDeg !== null) {
+            const rad = angleDeg * Math.PI / 180;
+            const cos = Math.cos(rad);
+            const sin = Math.sin(rad);
+            gradientTransform = [
+                [cos, -sin, 0.5 - 0.5 * cos + 0.5 * sin],
+                [sin, cos, 0.5 - 0.5 * sin - 0.5 * cos],
+            ];
+            gradientTransformNote = ` | received gradientTransform: ${JSON.stringify(gradient.gradientTransform)}; converted angle ${angleDeg}° -> ${JSON.stringify(gradientTransform)}`;
+        }
         const stops = Array.isArray(gradient.stops) ? gradient.stops : [];
-        if (stops.length < 2) throw new Error("node_set_fill: gradient requires at least 2 stops [{position,color:{r,g,b,a}}]");
+        if (stops.length < 2) throw new Error(`node_set_fill: gradient requires at least 2 stops [{position,color:{r,g,b,a}}]${gradientTransformNote}`);
         paintStyle = {
             type: gType,
-            gradientTransform: gradient.gradientTransform || [[1, 0, 0], [0, 1, 0]],
+            gradientTransform,
             gradientStops: stops.map((st: any) => ({
                 position: Math.min(1, Math.max(0, Number(st.position) || 0)),
                 color: {

@@ -685,6 +685,19 @@ Nothing was deleted. Read each listed consumer's current state with node_info (n
     }
     return "unknown (the parent could not be read safely)";
   }
+  async function getAbsoluteOffset(node) {
+    let offsetX = 0;
+    let offsetY = 0;
+    let current = node ? node.parent : null;
+    while (current && current.type !== "PAGE" && current.type !== "DOCUMENT") {
+      if ("x" in current && "y" in current) {
+        offsetX += current.x;
+        offsetY += current.y;
+      }
+      current = current.parent;
+    }
+    return { x: offsetX, y: offsetY };
+  }
   function rethrowAfterCreatorCleanup(error, node, context, verifiedParentId) {
     if (removeUncommitted(node, context)) {
       throw error;
@@ -1584,7 +1597,8 @@ Nothing was deleted. Read each listed consumer's current state with node_info (n
       arcData,
       pointCount,
       innerRadius,
-      cornerRadius
+      cornerRadius,
+      coordinateSpace = "parent"
     } = params || {};
     if (!type) {
       throw new Error("Missing shape type parameter");
@@ -1614,6 +1628,13 @@ Nothing was deleted. Read each listed consumer's current state with node_info (n
       throw new Error(`innerRadius is only supported for shape type STAR, got ${type}`);
     }
     const parent = await resolveAppendableParent(parentId, "create_shape");
+    let posX = x;
+    let posY = y;
+    if (coordinateSpace === "canvas") {
+      const offset = await getAbsoluteOffset(parent);
+      posX = x - offset.x;
+      posY = y - offset.y;
+    }
     if ((upperType === "POLYGON" || upperType === "STAR") && pointCount < 3) {
       throw new Error(`${upperType === "POLYGON" ? "Polygons" : "Stars"} require pointCount >= 3`);
     }
@@ -1650,8 +1671,8 @@ Nothing was deleted. Read each listed consumer's current state with node_info (n
       if (upperType === "STAR" && innerRadius !== void 0) {
         node.innerRadius = innerRadius;
       }
-      node.x = x;
-      node.y = y;
+      node.x = posX;
+      node.y = posY;
       node.resize(width, height);
       if (name !== void 0) {
         node.name = name;
@@ -1686,8 +1707,8 @@ Nothing was deleted. Read each listed consumer's current state with node_info (n
       if (useAbsolutePosition && parentId) {
         if (parent && (parent.layoutMode === "HORIZONTAL" || parent.layoutMode === "VERTICAL")) {
           node.layoutPositioning = "ABSOLUTE";
-          node.x = x;
-          node.y = y;
+          node.x = posX;
+          node.y = posY;
         }
       }
       const result = {
@@ -1727,7 +1748,8 @@ Nothing was deleted. Read each listed consumer's current state with node_info (n
       layoutSizingHorizontal = "FIXED",
       layoutSizingVertical = "FIXED",
       itemSpacing = 0,
-      cornerRadius
+      cornerRadius,
+      coordinateSpace = "parent"
     } = params || {};
     assertNonEmptyExplicitName(
       name,
@@ -1736,11 +1758,18 @@ Nothing was deleted. Read each listed consumer's current state with node_info (n
       "Omit name to use the default name."
     );
     const parentNode = await resolveAppendableParent(parentId, "create_frame");
+    let frameX = x;
+    let frameY = y;
+    if (coordinateSpace === "canvas") {
+      const offset = await getAbsoluteOffset(parentNode);
+      frameX = x - offset.x;
+      frameY = y - offset.y;
+    }
     const frame = figma.createFrame();
     try {
       parentNode.appendChild(frame);
-      frame.x = x;
-      frame.y = y;
+      frame.x = frameX;
+      frame.y = frameY;
       frame.resize(width, height);
       frame.name = name;
       if (cornerRadius !== void 0) {
@@ -1815,7 +1844,8 @@ Nothing was deleted. Read each listed consumer's current state with node_info (n
       width = 1e3,
       height = 1e3,
       name = "Section",
-      parentId
+      parentId,
+      coordinateSpace = "parent"
     } = params || {};
     assertNonEmptyExplicitName(
       name,
@@ -1824,11 +1854,18 @@ Nothing was deleted. Read each listed consumer's current state with node_info (n
       "Omit name to use the default name."
     );
     const parentNode = await resolveAppendableParent(parentId, "create_section");
+    let sectionX = x;
+    let sectionY = y;
+    if (coordinateSpace === "canvas") {
+      const offset = await getAbsoluteOffset(parentNode);
+      sectionX = x - offset.x;
+      sectionY = y - offset.y;
+    }
     const section = figma.createSection();
     try {
       parentNode.appendChild(section);
-      section.x = x;
-      section.y = y;
+      section.x = sectionX;
+      section.y = sectionY;
       section.resizeWithoutConstraints(width, height);
       section.name = name;
       const result = {
@@ -1882,7 +1919,8 @@ Nothing was deleted. Read each listed consumer's current state with node_info (n
       textAlign,
       textAlignHorizontal,
       lineHeight,
-      letterSpacing
+      letterSpacing,
+      coordinateSpace = "parent"
     } = params || {};
     assertNonEmptyExplicitName(
       name,
@@ -1892,11 +1930,18 @@ Nothing was deleted. Read each listed consumer's current state with node_info (n
     );
     const fontStyle = getFontStyle(fontWeight);
     const parentNode = await resolveAppendableParent(parentId, "create_text");
+    let textX = x;
+    let textY = y;
+    if (coordinateSpace === "canvas") {
+      const offset = await getAbsoluteOffset(parentNode);
+      textX = x - offset.x;
+      textY = y - offset.y;
+    }
     const textNode = figma.createText();
     try {
       parentNode.appendChild(textNode);
-      textNode.x = x;
-      textNode.y = y;
+      textNode.x = textX;
+      textNode.y = textY;
       textNode.name = name !== void 0 ? name : text;
       await figma.loadFontAsync({
         family: "Inter",
@@ -2024,7 +2069,7 @@ Nothing was deleted. Read each listed consumer's current state with node_info (n
 
   // plugin/handlers/nodeModifiers.ts
   async function transformNode(params) {
-    const { nodeId, x, y, width, height } = params || {};
+    const { nodeId, x, y, width, height, coordinateSpace = "parent" } = params || {};
     if (!nodeId) {
       throw new Error("Missing nodeId parameter");
     }
@@ -2044,8 +2089,15 @@ Nothing was deleted. Read each listed consumer's current state with node_info (n
           throw new Error(`Operation Denied: Cannot set x/y on node '${node.name}' because its parent ('${parent.name}') has Auto-layout applied and the node is not absolutely positioned. To reposition this node, either change its order in the parent's children array, set its layoutPositioning to "ABSOLUTE", or remove Auto-layout from the parent.`);
         }
       }
-      if (x !== void 0) node.x = x;
-      if (y !== void 0) node.y = y;
+      let targetX = x;
+      let targetY = y;
+      if (coordinateSpace === "canvas") {
+        const offset = await getAbsoluteOffset(parent);
+        if (x !== void 0) targetX = x - offset.x;
+        if (y !== void 0) targetY = y - offset.y;
+      }
+      if (targetX !== void 0) node.x = targetX;
+      if (targetY !== void 0) node.y = targetY;
     }
     if (width !== void 0 || height !== void 0) {
       if (!("resize" in node)) {
@@ -2605,11 +2657,24 @@ Nothing was deleted. Read each listed consumer's current state with node_info (n
       };
       const gType = gTypeMap[String(gradient.type || "LINEAR").toUpperCase()];
       if (!gType) throw new Error(`node_set_fill: unsupported gradient type '${gradient.type}' (use LINEAR/RADIAL/ANGULAR/DIAMOND)`);
+      let gradientTransform = gradient.gradientTransform || [[1, 0, 0], [0, 1, 0]];
+      let gradientTransformNote = "";
+      const angleDeg = typeof gradientTransform === "number" ? gradientTransform : !Array.isArray(gradientTransform) && typeof (gradientTransform == null ? void 0 : gradientTransform.angle) === "number" ? gradientTransform.angle : null;
+      if (angleDeg !== null) {
+        const rad = angleDeg * Math.PI / 180;
+        const cos = Math.cos(rad);
+        const sin = Math.sin(rad);
+        gradientTransform = [
+          [cos, -sin, 0.5 - 0.5 * cos + 0.5 * sin],
+          [sin, cos, 0.5 - 0.5 * sin - 0.5 * cos]
+        ];
+        gradientTransformNote = ` | received gradientTransform: ${JSON.stringify(gradient.gradientTransform)}; converted angle ${angleDeg}\xB0 -> ${JSON.stringify(gradientTransform)}`;
+      }
       const stops = Array.isArray(gradient.stops) ? gradient.stops : [];
-      if (stops.length < 2) throw new Error("node_set_fill: gradient requires at least 2 stops [{position,color:{r,g,b,a}}]");
+      if (stops.length < 2) throw new Error(`node_set_fill: gradient requires at least 2 stops [{position,color:{r,g,b,a}}]${gradientTransformNote}`);
       paintStyle = {
         type: gType,
-        gradientTransform: gradient.gradientTransform || [[1, 0, 0], [0, 1, 0]],
+        gradientTransform,
         gradientStops: stops.map((st) => {
           var _a, _b, _c, _d;
           return {
@@ -3182,7 +3247,9 @@ Nothing was deleted. Read each listed consumer's current state with node_info (n
     }
   }
   async function exportNodeAsImage(params) {
+    var _a, _b;
     const { nodeId, scale = 1 } = params || {};
+    const maxDimension = typeof (params == null ? void 0 : params.maxDimension) === "number" && params.maxDimension > 0 ? params.maxDimension : null;
     const format = (params == null ? void 0 : params.format) ? String(params.format).toUpperCase() : "PNG";
     if (!nodeId) {
       throw new Error("Missing nodeId parameter");
@@ -3197,9 +3264,19 @@ Nothing was deleted. Read each listed consumer's current state with node_info (n
     if (!("exportAsync" in node)) {
       throw new Error(`Node does not support exporting: ${nodeId}`);
     }
+    let effectiveScale = scale;
+    if (maxDimension && (format === "PNG" || format === "JPG")) {
+      const w = (_a = node.width) != null ? _a : 0;
+      const h = (_b = node.height) != null ? _b : 0;
+      const longest = Math.max(w, h);
+      if (longest > 0) {
+        const cap = maxDimension / longest;
+        if (cap < effectiveScale) effectiveScale = Math.max(cap, 0.1);
+      }
+    }
     try {
       const isRaster = format === "PNG" || format === "JPG";
-      const settings = isRaster ? { format, constraint: { type: "SCALE", value: scale } } : { format };
+      const settings = isRaster ? { format, constraint: { type: "SCALE", value: effectiveScale } } : { format };
       const bytes = await node.exportAsync(settings);
       let mimeType;
       switch (format) {
@@ -6489,7 +6566,7 @@ Processing annotation ${i + 1}/${annotations.length}:`,
 
   // plugin/handlers/vectorHandlers.ts
   async function createNodeFromSvg(params) {
-    const { parentId, svg, name, x = 0, y = 0 } = params || {};
+    const { parentId, svg, name, x = 0, y = 0, coordinateSpace = "parent" } = params || {};
     if (!svg) {
       throw new Error("Missing required parameter: svg string.");
     }
@@ -6500,14 +6577,21 @@ Processing annotation ${i + 1}/${annotations.length}:`,
       "Omit name to use the default name."
     );
     const parentNode = await resolveAppendableParent(parentId, "create_svg");
+    let svgX = x;
+    let svgY = y;
+    if (coordinateSpace === "canvas") {
+      const offset = await getAbsoluteOffset(parentNode);
+      svgX = x - offset.x;
+      svgY = y - offset.y;
+    }
     const node = figma.createNodeFromSvg(svg);
     try {
       parentNode.appendChild(node);
       if (name !== void 0) {
         node.name = name;
       }
-      node.x = x;
-      node.y = y;
+      node.x = svgX;
+      node.y = svgY;
       const result = {
         id: node.id,
         name: node.name,
@@ -6679,7 +6763,7 @@ Processing annotation ${i + 1}/${annotations.length}:`,
   async function validateSingleNodeWrite(params, options) {
     if (!state.allowEditNode) throw new Error(ERRORS.READ_ONLY_MODE);
     if (!await checkScopeAccess(params ? params.nodeId : null)) throw new Error(formatScopeError2(ERRORS.OUTSIDE_SCOPE));
-    if (!await verifyNodeName(params ? params.nodeId : null, params ? params.nodeName : null)) throw new Error(ERRORS.NAME_MISMATCH);
+    if ((params == null ? void 0 : params.strictNames) !== false && !await verifyNodeName(params ? params.nodeId : null, params ? params.nodeName : null)) throw new Error(ERRORS.NAME_MISMATCH);
     const node = await figma.getNodeByIdAsync(params == null ? void 0 : params.nodeId);
     if (node) {
       if (options.checkScopeRoot) assertNotScopeRoot(node.id);
@@ -6693,7 +6777,7 @@ Processing annotation ${i + 1}/${annotations.length}:`,
   async function validateParentWrite(params, options) {
     if (!state.allowEditNode) throw new Error(ERRORS.READ_ONLY_MODE);
     if (!await checkScopeAccess(params ? params.parentId : null)) throw new Error(formatScopeError2(ERRORS.PARENT_OUTSIDE_SCOPE));
-    await verifyParentNameOrThrow(params ? params.parentId : null, params ? params.parentNodeName : null);
+    if ((params == null ? void 0 : params.strictNames) !== false) await verifyParentNameOrThrow(params ? params.parentId : null, params ? params.parentNodeName : null);
     const parent = await figma.getNodeByIdAsync(params == null ? void 0 : params.parentId);
     if (parent) {
       if (options.checkLocked) assertNotLocked(parent);

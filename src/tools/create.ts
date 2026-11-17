@@ -12,8 +12,11 @@ export function registerCreateTools(server: McpServer) {
             description: "Create a rectangle, ellipse, polygon, or star via `type`, with position/size and optional `fillColor`/`strokeColor`. Shape-specific params (`arcData`; `pointCount`/`innerRadius`) validated by `type`. `pointCount` = sides (polygon) or points (star), native count — no even-parity rule.",
             inputSchema: z.object({
                 type: z.enum(["RECTANGLE", "ELLIPSE", "POLYGON", "STAR"]).describe("The type of shape to create"),
-                x: z.number().describe("X position"),
-                y: z.number().describe("Y position"),
+                // figma-mcp-server 定制：坐标系契约，默认 parent=父级相对
+                x: z.number().describe("Canvas-absolute X position (applies only when coordinateSpace:'canvas'; default 'parent' = parent-relative)"),
+                y: z.number().describe("Canvas-absolute Y position (applies only when coordinateSpace:'canvas'; default 'parent' = parent-relative)"),
+                // figma-mcp-server 定制：坐标系，默认 parent=父级相对（将切换为 canvas 另行通知）
+                coordinateSpace: z.enum(["canvas", "parent"]).optional().describe("坐标系：parent=父级相对（默认，将切换为 canvas 另行通知）| canvas=画布绝对坐标"),
                 width: z.number().describe("Width of the shape"),
                 height: z.number().describe("Height of the shape"),
                 name: z.string().min(1).optional().describe("Optional non-empty name for the shape"),
@@ -32,6 +35,8 @@ export function registerCreateTools(server: McpServer) {
                     b: z.number().min(0).max(1).describe("Blue component (0-1)"),
                     a: z.number().min(0).max(1).optional().describe("Alpha component (0-1)"),
                 }).optional().describe("Stroke color in RGBA format"),
+                // figma-mcp-server 定制：与 create_frame 对齐
+                strokeWeight: z.number().positive().optional().describe("Stroke weight"),
                 arcData: z.object({
                     startingAngle: z.number().optional().describe("Arc start in radians (0 = right/x-axis, default: 0)"),
                     endingAngle: z.number().optional().describe("Arc end in radians, clockwise (default: 2π for full ellipse)"),
@@ -65,8 +70,11 @@ export function registerCreateTools(server: McpServer) {
             title: "Create Frame",
             description: "Create a frame (container) with optional fill/stroke and full auto-layout configuration.",
             inputSchema: z.object({
-                x: z.number().describe("X position"),
-                y: z.number().describe("Y position"),
+                // figma-mcp-server 定制：坐标系契约，默认 parent=父级相对
+                x: z.number().describe("Canvas-absolute X position (applies only when coordinateSpace:'canvas'; default 'parent' = parent-relative)"),
+                y: z.number().describe("Canvas-absolute Y position (applies only when coordinateSpace:'canvas'; default 'parent' = parent-relative)"),
+                // figma-mcp-server 定制：坐标系，默认 parent=父级相对（将切换为 canvas 另行通知）
+                coordinateSpace: z.enum(["canvas", "parent"]).optional().describe("坐标系：parent=父级相对（默认，将切换为 canvas 另行通知）| canvas=画布绝对坐标"),
                 width: z.number().describe("Width of the frame"),
                 height: z.number().describe("Height of the frame"),
                 name: z.string().min(1).optional().describe("Optional non-empty name for the frame"),
@@ -127,8 +135,11 @@ export function registerCreateTools(server: McpServer) {
             title: "Create Section",
             description: "Create a SECTION (分区/屏幕分组容器). Section children count as top-level for prototype NAVIGATE destinations — prefer sections over wrapper frames when organizing screens. Children keep absolute canvas position when reparented in.",
             inputSchema: z.object({
-                x: z.number().describe("X position"),
-                y: z.number().describe("Y position"),
+                // figma-mcp-server 定制：坐标系契约，默认 parent=父级相对
+                x: z.number().describe("Canvas-absolute X position (applies only when coordinateSpace:'canvas'; default 'parent' = parent-relative)"),
+                y: z.number().describe("Canvas-absolute Y position (applies only when coordinateSpace:'canvas'; default 'parent' = parent-relative)"),
+                // figma-mcp-server 定制：坐标系，默认 parent=父级相对（将切换为 canvas 另行通知）
+                coordinateSpace: z.enum(["canvas", "parent"]).optional().describe("坐标系：parent=父级相对（默认，将切换为 canvas 另行通知）| canvas=画布绝对坐标"),
                 width: z.number().positive().describe("Width of the section"),
                 height: z.number().positive().describe("Height of the section"),
                 name: z.string().min(1).optional().describe("Optional non-empty name for the section"),
@@ -160,8 +171,11 @@ export function registerCreateTools(server: McpServer) {
             title: "Create Text",
             description: "Create a text node with content and optional font size/weight/color.",
             inputSchema: z.object({
-                x: z.number().describe("X position"),
-                y: z.number().describe("Y position"),
+                // figma-mcp-server 定制：坐标系契约，默认 parent=父级相对
+                x: z.number().describe("Canvas-absolute X position (applies only when coordinateSpace:'canvas'; default 'parent' = parent-relative)"),
+                y: z.number().describe("Canvas-absolute Y position (applies only when coordinateSpace:'canvas'; default 'parent' = parent-relative)"),
+                // figma-mcp-server 定制：坐标系，默认 parent=父级相对（将切换为 canvas 另行通知）
+                coordinateSpace: z.enum(["canvas", "parent"]).optional().describe("坐标系：parent=父级相对（默认，将切换为 canvas 另行通知）| canvas=画布绝对坐标"),
                 text: z.string().describe("Text content"),
                 fontSize: z.number().min(1).optional().describe("Font size, minimum 1 (default: 14)"),
                 fontWeight: z.number().int().min(100).max(900).multipleOf(100).optional()
@@ -215,8 +229,11 @@ export function registerCreateTools(server: McpServer) {
                 name: z.string().min(1).optional().describe("Optional non-empty name for the new node"),
                 parentId: z.string().describe("Parent ID to append to"),
                 parentNodeName: z.string().describe("The parent node's current exact name, passed back verbatim from `node_info`."),
-                x: z.number().optional().describe("X position"),
-                y: z.number().optional().describe("Y position"),
+                // figma-mcp-server 定制：坐标系契约，默认 parent=父级相对
+                x: z.number().optional().describe("Canvas-absolute X position (applies only when coordinateSpace:'canvas'; default 'parent' = parent-relative)"),
+                y: z.number().optional().describe("Canvas-absolute Y position (applies only when coordinateSpace:'canvas'; default 'parent' = parent-relative)"),
+                // figma-mcp-server 定制：坐标系，默认 parent=父级相对（将切换为 canvas 另行通知）
+                coordinateSpace: z.enum(["canvas", "parent"]).optional().describe("坐标系：parent=父级相对（默认，将切换为 canvas 另行通知）| canvas=画布绝对坐标"),
             }),
             outputSchema: looseOutput({
                 id: z.string().describe("ID of the created node"),

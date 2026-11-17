@@ -114,12 +114,17 @@ export function registerNodeTools(server: McpServer) {
         {
             title: "Transform Node",
             // figma-mcp-server 定制：描述补 auto-layout 限制
-            description: "Move and/or resize a node by setting absolute `x`/`y`/`width`/`height` (any subset). Auto-layout limits: if the node's parent is auto-layout and the node is not absolutely positioned, setting `x`/`y` fails with Operation Denied; resizing a node whose parent uses HUG/FILL sizing knocks that axis back to FIXED, reported via `warnings`.",
+            description: "Move and/or resize a node by setting absolute `x`/`y`/`width`/`height` (any subset). Auto-layout limits: if the node's parent is auto-layout and the node is not absolutely positioned, setting `x`/`y` fails with Operation Denied; resizing a node whose parent uses HUG/FILL sizing knocks that axis back to FIXED, reported via `warnings`. Top-level `strictNames: false` skips the nodeName consistency check — scripts keep working after a node is renamed (nodes are located by nodeId).",
             inputSchema: z.object({
                 nodeId: z.string().describe("The ID of the node to transform"),
                 nodeName: z.string().describe("The node's current exact name, passed back verbatim from `node_info`."),
-                x: z.number().optional().describe("New X position"),
-                y: z.number().optional().describe("New Y position"),
+                // figma-mcp-server 定制：false 时跳过 nodeName 一致性校验（节点改名后脚本仍可用，靠 nodeId 定位）
+                strictNames: z.boolean().optional().describe("false 时跳过 nodeName 一致性校验（节点被改名后脚本仍可用，靠 nodeId 定位）"),
+                // figma-mcp-server 定制：坐标系契约，默认 parent=父级相对
+                x: z.number().optional().describe("Canvas-absolute X position (applies only when coordinateSpace:'canvas'; default 'parent' = parent-relative)"),
+                y: z.number().optional().describe("Canvas-absolute Y position (applies only when coordinateSpace:'canvas'; default 'parent' = parent-relative)"),
+                // figma-mcp-server 定制：坐标系，默认 parent=父级相对（将切换为 canvas 另行通知）
+                coordinateSpace: z.enum(["canvas", "parent"]).optional().describe("坐标系：parent=父级相对（默认，将切换为 canvas 另行通知）| canvas=画布绝对坐标"),
                 width: z.number().positive().optional().describe("New width"),
                 height: z.number().positive().optional().describe("New height"),
             }),
@@ -149,10 +154,12 @@ export function registerNodeTools(server: McpServer) {
         "node_rename",
         {
             title: "Rename Node",
-            description: "Rename a node (sets `name` to an exact value).",
+            description: "Rename a node (sets `name` to an exact value). Top-level `strictNames: false` skips the nodeName consistency check — scripts keep working after a node is renamed (nodes are located by nodeId).",
             inputSchema: z.object({
                 nodeId: z.string().describe("The ID of the node to rename"),
                 nodeName: z.string().describe("The node's current exact name, passed back verbatim from `node_info`."),
+                // figma-mcp-server 定制：false 时跳过 nodeName 一致性校验（节点改名后脚本仍可用，靠 nodeId 定位）
+                strictNames: z.boolean().optional().describe("false 时跳过 nodeName 一致性校验（节点被改名后脚本仍可用，靠 nodeId 定位）"),
                 name: z.string().min(1).describe("New non-empty name for the node. Figma normalizes an empty name to a type default, so `\"\"` is refused rather than silently substituted."),
             }),
             outputSchema: looseOutput({
@@ -175,18 +182,22 @@ export function registerNodeTools(server: McpServer) {
         "node_delete",
         {
             title: "Delete Nodes",
-            description: "Delete one or more nodes in a single batched, per-item-validated call. No API undo. If the status is 'partial_success', treat it as an incomplete operation, report the failed and skipped items to the user, and retry every non-success item (both failed and skipped).",
+            description: "Delete one or more nodes in a single batched, per-item-validated call. No API undo. If the status is 'partial_success', treat it as an incomplete operation, report the failed and skipped items to the user, and retry every non-success item (both failed and skipped). Top-level `strictNames: false` skips the nodeName consistency check — scripts keep working after a node is renamed (nodes are located by nodeId).",
             inputSchema: z.object({
                 nodes: z
                     .array(
                         z.object({
                             nodeId: z.string().describe("The ID of the node to delete"),
                             nodeName: z.string().describe("The node's current exact name, passed back verbatim from `node_info`."),
+                // figma-mcp-server 定制：false 时跳过 nodeName 一致性校验（节点改名后脚本仍可用，靠 nodeId 定位）
+                strictNames: z.boolean().optional().describe("false 时跳过 nodeName 一致性校验（节点被改名后脚本仍可用，靠 nodeId 定位）"),
                         })
                     )
                     .min(1)
                     .superRefine(noDuplicateTargets)
                     .describe("Array of nodes to delete"),
+                // figma-mcp-server 定制：false 时跳过 nodeName 一致性校验（节点改名后脚本仍可用，靠 nodeId 定位）
+                strictNames: z.boolean().optional().describe("false 时跳过 nodeName 一致性校验（节点被改名后脚本仍可用，靠 nodeId 定位）"),
             }),
             outputSchema: looseOutput({
                 success: z.boolean().describe("Whether all deletions succeeded"),
@@ -214,10 +225,12 @@ export function registerNodeTools(server: McpServer) {
         "node_clone",
         {
             title: "Clone Node",
-            description: "Duplicate an existing node, optionally at a new `x`/`y`. Produces a new node id.",
+            description: "Duplicate an existing node, optionally at a new `x`/`y`. Produces a new node id. Top-level `strictNames: false` skips the nodeName consistency check — scripts keep working after a node is renamed (nodes are located by nodeId).",
             inputSchema: z.object({
                 nodeId: z.string().describe("The ID of the node to clone"),
                 nodeName: z.string().describe("The node's current exact name, passed back verbatim from `node_info`."),
+                // figma-mcp-server 定制：false 时跳过 nodeName 一致性校验（节点改名后脚本仍可用，靠 nodeId 定位）
+                strictNames: z.boolean().optional().describe("false 时跳过 nodeName 一致性校验（节点被改名后脚本仍可用，靠 nodeId 定位）"),
                 x: z.number().optional().describe("New X position for the clone; must be provided together with y — giving only one leaves position unchanged"),
                 y: z.number().optional().describe("New Y position for the clone; must be provided together with x — giving only one leaves position unchanged"),
             }),
@@ -273,13 +286,15 @@ export function registerNodeTools(server: McpServer) {
         {
             title: "Group Nodes",
             // figma-mcp-server 定制：nodes 至少 2 个，且必须同父
-            description: "Wrap multiple nodes in a new group node; all nodes must share the same parent.",
+            description: "Wrap multiple nodes in a new group node; all nodes must share the same parent. Top-level `strictNames: false` skips the nodeName consistency check — scripts keep working after a node is renamed (nodes are located by nodeId).",
             inputSchema: z.object({
                 nodes: z
                     .array(
                         z.object({
                             nodeId: z.string().describe("The ID of the node to group"),
                             nodeName: z.string().describe("The node's current exact name, passed back verbatim from `node_info`."),
+                // figma-mcp-server 定制：false 时跳过 nodeName 一致性校验（节点改名后脚本仍可用，靠 nodeId 定位）
+                strictNames: z.boolean().optional().describe("false 时跳过 nodeName 一致性校验（节点被改名后脚本仍可用，靠 nodeId 定位）"),
                         })
                     )
                     .min(2)
@@ -306,10 +321,12 @@ export function registerNodeTools(server: McpServer) {
         "node_ungroup",
         {
             title: "Ungroup Node",
-            description: "Dissolve a group, promoting its children to the parent. Removes the group container.",
+            description: "Dissolve a group, promoting its children to the parent. Removes the group container. Top-level `strictNames: false` skips the nodeName consistency check — scripts keep working after a node is renamed (nodes are located by nodeId).",
             inputSchema: z.object({
                 nodeId: z.string().describe("The ID of the group to ungroup"),
                 nodeName: z.string().describe("The group's current exact name, passed back verbatim from `node_info`."),
+                // figma-mcp-server 定制：false 时跳过 nodeName 一致性校验（节点改名后脚本仍可用，靠 nodeId 定位）
+                strictNames: z.boolean().optional().describe("false 时跳过 nodeName 一致性校验（节点被改名后脚本仍可用，靠 nodeId 定位）"),
             }),
             outputSchema: looseOutput({
                 parentId: z.string().nullable().describe("ID of the parent node (null if the group had no parent)"),
@@ -334,10 +351,12 @@ export function registerNodeTools(server: McpServer) {
         "node_flatten",
         {
             title: "Flatten Node",
-            description: "Flatten a node and its children into a single vector. Lossy — original structure is not recoverable.",
+            description: "Flatten a node and its children into a single vector. Lossy — original structure is not recoverable. Top-level `strictNames: false` skips the nodeName consistency check — scripts keep working after a node is renamed (nodes are located by nodeId).",
             inputSchema: z.object({
                 nodeId: z.string().describe("The ID of the node to flatten"),
                 nodeName: z.string().describe("The node's current exact name, passed back verbatim from `node_info`."),
+                // figma-mcp-server 定制：false 时跳过 nodeName 一致性校验（节点改名后脚本仍可用，靠 nodeId 定位）
+                strictNames: z.boolean().optional().describe("false 时跳过 nodeName 一致性校验（节点被改名后脚本仍可用，靠 nodeId 定位）"),
             }),
             outputSchema: looseOutput({
                 id: z.string().describe("ID of the flattened node"),
@@ -361,12 +380,14 @@ export function registerNodeTools(server: McpServer) {
         "node_insert_child",
         {
             title: "Reparent Node",
-            description: "Reparent a node under a new parent at an optional `index`. Valid range is 0 to parent's child count. Omit `index` to append.",
+            description: "Reparent a node under a new parent at an optional `index`. Valid range is 0 to parent's child count. Omit `index` to append. Top-level `strictNames: false` skips the nodeName consistency check — scripts keep working after a node is renamed (nodes are located by nodeId).",
             inputSchema: z.object({
                 parentId: z.string().describe("ID of the new parent node"),
                 parentNodeName: z.string().describe("The parent node's current exact name, passed back verbatim from `node_info`."),
                 childId: z.string().describe("ID of the child node to reparent"),
                 childNodeName: z.string().describe("The child node's current exact name, passed back verbatim from `node_info`."),
+                // figma-mcp-server 定制：false 时跳过 nodeName 一致性校验（节点改名后脚本仍可用，靠 nodeId 定位）
+                strictNames: z.boolean().optional().describe("false 时跳过 nodeName 一致性校验（节点被改名后脚本仍可用，靠 nodeId 定位）"),
                 index: z
                     .number()
                     .optional()
@@ -394,10 +415,12 @@ export function registerNodeTools(server: McpServer) {
         {
             title: "Set Auto Layout",
             // figma-mcp-server 定制：描述补 NONE 拒绝布局参数、BASELINE 限制、适用节点类型、layoutWrap 限制
-            description: "Configure a frame's auto-layout (mode, padding, spacing, alignment, sizing) in one unified setter. Also accepts COMPONENT/COMPONENT_SET/INSTANCE targets. Frames with layoutMode NONE reject padding/alignment/spacing params with Operation Denied; `layoutWrap` is ignored when layoutMode is NONE. BASELINE counter-axis alignment is only valid for HORIZONTAL.",
+            description: "Configure a frame's auto-layout (mode, padding, spacing, alignment, sizing) in one unified setter. Also accepts COMPONENT/COMPONENT_SET/INSTANCE targets. Frames with layoutMode NONE reject padding/alignment/spacing params with Operation Denied; `layoutWrap` is ignored when layoutMode is NONE. BASELINE counter-axis alignment is only valid for HORIZONTAL. Top-level `strictNames: false` skips the nodeName consistency check — scripts keep working after a node is renamed (nodes are located by nodeId).",
             inputSchema: z.object({
                 nodeId: z.string().describe("The ID of the frame to modify"),
                 nodeName: z.string().describe("The node's current exact name, passed back verbatim from `node_info`."),
+                // figma-mcp-server 定制：false 时跳过 nodeName 一致性校验（节点改名后脚本仍可用，靠 nodeId 定位）
+                strictNames: z.boolean().optional().describe("false 时跳过 nodeName 一致性校验（节点被改名后脚本仍可用，靠 nodeId 定位）"),
                 layoutMode: z
                     .enum(["NONE", "HORIZONTAL", "VERTICAL"])
                     .optional()
@@ -466,10 +489,12 @@ export function registerNodeTools(server: McpServer) {
         "node_set_fill",
         {
             title: "Set Fill",
-            description: "Set a node's fill to a literal RGBA color, an image, a gradient, or clear it. For LOCAL image files use image: { filePath: '<absolute path>' } (broker reads the file and converts; do NOT use file:// or localhost URLs). Use `node_apply_style` to link a shared paint style, or `node_bind_variable` to bind a color token.",
+            description: "Set a node's fill to a literal RGBA color, an image, a gradient, or clear it. For LOCAL image files use image: { filePath: '<absolute path>' } (broker reads the file and converts; do NOT use file:// or localhost URLs). Use `node_apply_style` to link a shared paint style, or `node_bind_variable` to bind a color token. Top-level `strictNames: false` skips the nodeName consistency check — scripts keep working after a node is renamed (nodes are located by nodeId).",
             inputSchema: z.object({
                 nodeId: z.string().describe("The ID of the node to modify"),
                 nodeName: z.string().describe("The node's current exact name, passed back verbatim from `node_info`."),
+                // figma-mcp-server 定制：false 时跳过 nodeName 一致性校验（节点改名后脚本仍可用，靠 nodeId 定位）
+                strictNames: z.boolean().optional().describe("false 时跳过 nodeName 一致性校验（节点被改名后脚本仍可用，靠 nodeId 定位）"),
                 r: z.number().min(0).max(1).optional().describe("Red component (0-1)"),
                 g: z.number().min(0).max(1).optional().describe("Green component (0-1)"),
                 b: z.number().min(0).max(1).optional().describe("Blue component (0-1)"),
@@ -480,7 +505,7 @@ export function registerNodeTools(server: McpServer) {
                     .optional()
                     .describe("Alpha component (0-1)"),
                 // figma-mcp-server 定制：渐变约束补全（clamp、GRADIENT_ 前缀、≥2 stops）
-                gradient: z.any().optional().describe("Gradient fill: {type: LINEAR|RADIAL|ANGULAR|DIAMOND (GRADIENT_ prefix also accepted), stops: [{position, color: {r,g,b,a}}], gradientTransform?}. Stop positions are clamped to 0-1; at least 2 stops required."),
+                gradient: z.any().optional().describe("Gradient fill: {type: LINEAR|RADIAL|ANGULAR|DIAMOND (GRADIENT_ prefix also accepted), stops: [{position, color: {r,g,b,a}}], gradientTransform?}. Stop positions are clamped to 0-1; at least 2 stops required. gradientTransform 可传 {angle: 度数字面量}（自动转矩阵）或标准 2x3 仿射矩阵 [[a,b,c],[d,e,f]]"),
                 image: z.object({
                     url: z.string().url().optional().describe("HTTP(S) URL to a PNG/JPEG/GIF the plugin fetches via createImageAsync. Max 4096px per side and NOT resized — pre-resize larger images yourself, or use bytesBase64 (which is auto-resized)."),
                     bytesBase64: z.string().optional().describe("Base64-encoded raw PNG/JPEG/GIF bytes. PNG/JPEG over 4096px per side are auto-downscaled server-side (aspect ratio preserved); GIF is not resized. Very large PNG/JPEG (over ~45 megapixels) exceed the server resize budget and are rejected — pre-resize those yourself. Heavier over the socket."),
@@ -561,10 +586,12 @@ export function registerNodeTools(server: McpServer) {
         "node_set_stroke",
         {
             title: "Set Stroke",
-            description: "Set a node's stroke color and weight; supports uniform or per-side weights.",
+            description: "Set a node's stroke color and weight; supports uniform or per-side weights. Top-level `strictNames: false` skips the nodeName consistency check — scripts keep working after a node is renamed (nodes are located by nodeId).",
             inputSchema: z.object({
                 nodeId: z.string().describe("The ID of the node to modify"),
                 nodeName: z.string().describe("The node's current exact name, passed back verbatim from `node_info`."),
+                // figma-mcp-server 定制：false 时跳过 nodeName 一致性校验（节点改名后脚本仍可用，靠 nodeId 定位）
+                strictNames: z.boolean().optional().describe("false 时跳过 nodeName 一致性校验（节点被改名后脚本仍可用，靠 nodeId 定位）"),
                 r: z.number().min(0).max(1).describe("Red component (0-1)"),
                 g: z.number().min(0).max(1).describe("Green component (0-1)"),
                 b: z.number().min(0).max(1).describe("Blue component (0-1)"),
@@ -609,10 +636,12 @@ export function registerNodeTools(server: McpServer) {
         "node_set_corner_radius",
         {
             title: "Set Corner Radius",
-            description: "Set a node's corner radius — uniform or per-corner.",
+            description: "Set a node's corner radius — uniform or per-corner. Top-level `strictNames: false` skips the nodeName consistency check — scripts keep working after a node is renamed (nodes are located by nodeId).",
             inputSchema: z.object({
                 nodeId: z.string().describe("The ID of the node to modify"),
                 nodeName: z.string().describe("The node's current exact name, passed back verbatim from `node_info`."),
+                // figma-mcp-server 定制：false 时跳过 nodeName 一致性校验（节点改名后脚本仍可用，靠 nodeId 定位）
+                strictNames: z.boolean().optional().describe("false 时跳过 nodeName 一致性校验（节点被改名后脚本仍可用，靠 nodeId 定位）"),
                 radius: z.number().min(0).describe("Corner radius value"),
                 corners: z
                     .array(z.boolean())
@@ -646,10 +675,12 @@ export function registerNodeTools(server: McpServer) {
         "node_set_effects",
         {
             title: "Set Effects",
-            description: "Set a node's effect array (shadows, blurs). Use `node_apply_style` to link a shared effect style instead.",
+            description: "Set a node's effect array (shadows, blurs). Use `node_apply_style` to link a shared effect style instead. Top-level `strictNames: false` skips the nodeName consistency check — scripts keep working after a node is renamed (nodes are located by nodeId).",
             inputSchema: z.object({
                 nodeId: z.string().describe("The ID of the node to modify"),
                 nodeName: z.string().describe("The node's current exact name, passed back verbatim from `node_info`."),
+                // figma-mcp-server 定制：false 时跳过 nodeName 一致性校验（节点改名后脚本仍可用，靠 nodeId 定位）
+                strictNames: z.boolean().optional().describe("false 时跳过 nodeName 一致性校验（节点被改名后脚本仍可用，靠 nodeId 定位）"),
                 effects: z
                     .array(nodeEffect)
                     .describe("Array of strict per-variant Figma effects: DROP_SHADOW/INNER_SHADOW or LAYER_BLUR/BACKGROUND_BLUR"),
@@ -673,10 +704,12 @@ export function registerNodeTools(server: McpServer) {
         "node_apply_style",
         {
             title: "Apply Style",
-            description: "Link a node to a shared library style (paint/text/effect/grid) by `styleId`. Use the raw `node_set_*` setters for ad-hoc values not backed by a style.",
+            description: "Link a node to a shared library style (paint/text/effect/grid) by `styleId`. Use the raw `node_set_*` setters for ad-hoc values not backed by a style. Top-level `strictNames: false` skips the nodeName consistency check — scripts keep working after a node is renamed (nodes are located by nodeId).",
             inputSchema: z.object({
                 nodeId: z.string().describe("The ID of the node to apply style to"),
                 nodeName: z.string().describe("The node's current exact name, passed back verbatim from `node_info`."),
+                // figma-mcp-server 定制：false 时跳过 nodeName 一致性校验（节点改名后脚本仍可用，靠 nodeId 定位）
+                strictNames: z.boolean().optional().describe("false 时跳过 nodeName 一致性校验（节点被改名后脚本仍可用，靠 nodeId 定位）"),
                 styleId: z.string().describe("The ID of the style to apply"),
                 styleType: z
                     .enum(["TEXT", "FILL", "STROKE", "EFFECT", "GRID"])
@@ -702,10 +735,12 @@ export function registerNodeTools(server: McpServer) {
         "node_bind_variable",
         {
             title: "Bind Variable",
-            description: "Bind a variable to a node property, or set an explicit variable mode. Use instead of a literal `node_set_*` when the value should track a design token. Ordering rules: set auto-layout before binding padding/spacing; set a solid fill before binding a colour token.",
+            description: "Bind a variable to a node property, or set an explicit variable mode. Use instead of a literal `node_set_*` when the value should track a design token. Ordering rules: set auto-layout before binding padding/spacing; set a solid fill before binding a colour token. Top-level `strictNames: false` skips the nodeName consistency check — scripts keep working after a node is renamed (nodes are located by nodeId).",
             inputSchema: z.object({
                 nodeId: z.string().describe("The ID of the node to bind variables to"),
                 nodeName: z.string().describe("The node's current exact name, passed back verbatim from `node_info`."),
+                // figma-mcp-server 定制：false 时跳过 nodeName 一致性校验（节点改名后脚本仍可用，靠 nodeId 定位）
+                strictNames: z.boolean().optional().describe("false 时跳过 nodeName 一致性校验（节点被改名后脚本仍可用，靠 nodeId 定位）"),
                 bindVariables: z
                     // Restrict keys to the typings-derived allowlist (z.enum), so the valid
                     // set is published in the wire JSON schema as propertyNames.enum — not just
@@ -764,6 +799,8 @@ export function registerNodeTools(server: McpServer) {
                     .max(4)
                     .default(1)
                     .describe("Export scale, between 0.1 and 4.0 (e.g. 1, 2, 0.5)"),
+                // figma-mcp-server 定制：存盘模式，省 token
+                filePath: z.string().optional().describe("绝对路径，如 C:\\imgs\\check.png——指定后图片存盘，只回 {filePath,bytes} 不进上下文（省 token）"),
             }),
             outputSchema: looseOutput({
                 nodeId: z.string().optional().describe("ID of the exported node"),

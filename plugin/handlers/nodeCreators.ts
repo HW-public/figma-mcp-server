@@ -4,7 +4,7 @@
  */
 
 import { setCharacters } from '../utils/textUtils.js';
-import { rethrowAfterCreatorCleanup } from '../utils/nodeUtils.js';
+import { rethrowAfterCreatorCleanup, getAbsoluteOffset } from '../utils/nodeUtils.js';
 import { assertNonEmptyExplicitName } from '../utils/creatorValidation.js';
 
 export async function resolveAppendableParent(parentId: string, command: string): Promise<any> {
@@ -51,6 +51,7 @@ export async function createShape(params: any) {
         pointCount,
         innerRadius,
         cornerRadius,
+        coordinateSpace = "parent",
     } = params || {};
 
     if (!type) {
@@ -86,6 +87,15 @@ export async function createShape(params: any) {
     }
 
     const parent = await resolveAppendableParent(parentId, "create_shape");
+
+    // figma-mcp-server 定制：coordinateSpace=canvas 时把画布绝对坐标换算成父级相对坐标（默认 parent=旧行为，将切换 canvas 默认另行通知）
+    let posX = x;
+    let posY = y;
+    if (coordinateSpace === "canvas") {
+        const offset = await getAbsoluteOffset(parent);
+        posX = x - offset.x;
+        posY = y - offset.y;
+    }
 
     if ((upperType === "POLYGON" || upperType === "STAR") && pointCount! < 3) {
         throw new Error(`${upperType === "POLYGON" ? "Polygons" : "Stars"} require pointCount >= 3`);
@@ -129,8 +139,8 @@ export async function createShape(params: any) {
             (node as StarNode).innerRadius = innerRadius;
         }
 
-        node.x = x;
-        node.y = y;
+        node.x = posX;
+        node.y = posY;
         node.resize(width, height);
         if (name !== undefined) {
             node.name = name;
@@ -171,8 +181,8 @@ export async function createShape(params: any) {
         if (useAbsolutePosition && parentId) {
             if (parent && (parent.layoutMode === "HORIZONTAL" || parent.layoutMode === "VERTICAL")) {
                 node.layoutPositioning = "ABSOLUTE";
-                node.x = x;
-                node.y = y;
+                node.x = posX;
+                node.y = posY;
             }
         }
 
@@ -231,6 +241,7 @@ export async function createFrame(params: any) {
         layoutSizingVertical = "FIXED",
         itemSpacing = 0,
         cornerRadius,
+        coordinateSpace = "parent",
     } = params || {};
 
     assertNonEmptyExplicitName(
@@ -242,13 +253,22 @@ export async function createFrame(params: any) {
 
     const parentNode = await resolveAppendableParent(parentId, "create_frame");
 
+    // figma-mcp-server 定制：coordinateSpace=canvas 时把画布绝对坐标换算成父级相对坐标（默认 parent=旧行为，将切换 canvas 默认另行通知）
+    let frameX = x;
+    let frameY = y;
+    if (coordinateSpace === "canvas") {
+        const offset = await getAbsoluteOffset(parentNode);
+        frameX = x - offset.x;
+        frameY = y - offset.y;
+    }
+
     const frame = figma.createFrame();
     try {
         // D11: contain the new frame before any fallible configuration.
         parentNode.appendChild(frame);
 
-        frame.x = x;
-        frame.y = y;
+        frame.x = frameX;
+        frame.y = frameY;
         frame.resize(width, height);
         frame.name = name;
 
@@ -346,6 +366,7 @@ export async function createSection(params: any) {
         height = 1000,
         name = "Section",
         parentId,
+        coordinateSpace = "parent",
     } = params || {};
 
     assertNonEmptyExplicitName(
@@ -357,11 +378,20 @@ export async function createSection(params: any) {
 
     const parentNode = await resolveAppendableParent(parentId, "create_section");
 
+    // figma-mcp-server 定制：coordinateSpace=canvas 时把画布绝对坐标换算成父级相对坐标（默认 parent=旧行为，将切换 canvas 默认另行通知）
+    let sectionX = x;
+    let sectionY = y;
+    if (coordinateSpace === "canvas") {
+        const offset = await getAbsoluteOffset(parentNode);
+        sectionX = x - offset.x;
+        sectionY = y - offset.y;
+    }
+
     const section = figma.createSection();
     try {
         parentNode.appendChild(section);
-        section.x = x;
-        section.y = y;
+        section.x = sectionX;
+        section.y = sectionY;
         section.resizeWithoutConstraints(width, height);
         section.name = name;
 
@@ -436,6 +466,7 @@ export async function createText(params: any) {
         textAlignHorizontal,
         lineHeight,
         letterSpacing,
+        coordinateSpace = "parent",
     } = params || {};
 
     assertNonEmptyExplicitName(
@@ -450,13 +481,22 @@ export async function createText(params: any) {
     const fontStyle = getFontStyle(fontWeight);
     const parentNode = await resolveAppendableParent(parentId, "create_text");
 
+    // figma-mcp-server 定制：coordinateSpace=canvas 时把画布绝对坐标换算成父级相对坐标（默认 parent=旧行为，将切换 canvas 默认另行通知）
+    let textX = x;
+    let textY = y;
+    if (coordinateSpace === "canvas") {
+        const offset = await getAbsoluteOffset(parentNode);
+        textX = x - offset.x;
+        textY = y - offset.y;
+    }
+
     const textNode = figma.createText();
     try {
         // D11: insertion must precede font-loading awaits and character writes.
         parentNode.appendChild(textNode);
 
-        textNode.x = x;
-        textNode.y = y;
+        textNode.x = textX;
+        textNode.y = textY;
         textNode.name = name !== undefined ? name : text;
         // Font loading and both configuration writes are part of creation.
         // Failure must reach the outer creator cleanup/disclosure path rather

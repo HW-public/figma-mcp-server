@@ -82,6 +82,8 @@ export function registerReactionTools(server: McpServer) {
             title: "Update Reactions",
             description: "Replace a node's prototype reactions with a full new reactions array (read first via `reaction_list`). Warning: reaction_list does NOT return CHANGE_TO reactions, so read-modify-write will silently lose them — account for this before updating.",
             inputSchema: z.object({
+                // figma-mcp-server 定制
+                strictNames: z.boolean().optional().describe("false 时跳过 nodeName 一致性校验（节点被改名后脚本仍可用，靠 nodeId 定位）"),
                 nodeId: z.string().describe("The ID of the node to update reactions for"),
                 nodeName: z.string().describe("The node's current exact name, passed back verbatim from `node_info`."),
                 reactions: z.array(ReactionSchema).describe("The full array of Reaction objects to set"),

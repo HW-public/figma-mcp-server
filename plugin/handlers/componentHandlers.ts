@@ -338,6 +338,8 @@ export async function createComponentInstance(params: any) {
  */
 export async function exportNodeAsImage(params: any) {
     const { nodeId, scale = 1 } = params || {};
+    // figma-mcp-server 定制：maxDimension 上限保护——防止误传大 scale 导出 4x 巨图写爆磁盘
+    const maxDimension = typeof params?.maxDimension === "number" && params.maxDimension > 0 ? params.maxDimension : null;
     const format = params?.format ? String(params.format).toUpperCase() : "PNG";
 
     if (!nodeId) {
@@ -356,12 +358,24 @@ export async function exportNodeAsImage(params: any) {
         throw new Error(`Node does not support exporting: ${nodeId}`);
     }
 
+    // figma-mcp-server 定制：按 maxDimension 收敛 scale（raster 格式）
+    let effectiveScale = scale;
+    if (maxDimension && (format === "PNG" || format === "JPG")) {
+        const w = (node as { width?: number }).width ?? 0;
+        const h = (node as { height?: number }).height ?? 0;
+        const longest = Math.max(w, h);
+        if (longest > 0) {
+            const cap = maxDimension / longest;
+            if (cap < effectiveScale) effectiveScale = Math.max(cap, 0.1);
+        }
+    }
+
     try {
         // The SCALE constraint only applies to raster formats; SVG and PDF are
         // vector and Figma's export settings for them reject a `constraint`.
         const isRaster = format === "PNG" || format === "JPG";
         const settings: any = isRaster
-            ? { format, constraint: { type: "SCALE", value: scale } }
+            ? { format, constraint: { type: "SCALE", value: effectiveScale } }
             : { format };
 
         const bytes = await node.exportAsync(settings);

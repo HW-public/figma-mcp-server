@@ -12,6 +12,8 @@ export function registerTextTools(server: McpServer) {
             title: "Set Text Contents",
             description: "Set the text of one or more text nodes in a single batched, per-item-validated call. If the status is 'partial_success', treat it as an incomplete operation, report the failed and skipped items to the user, and retry every non-success item (both failed and skipped).",
             inputSchema: z.object({
+                // figma-mcp-server 定制
+                strictNames: z.boolean().optional().describe("false 时跳过 nodeName 一致性校验（节点被改名后脚本仍可用，靠 nodeId 定位）"),
                 text: z
                     .array(
                         z.object({
@@ -51,6 +53,8 @@ export function registerTextTools(server: McpServer) {
             title: "Set Text Style",
             description: "Set any combination of typography properties (font, size, weight, spacing, decoration, …) on a text node.",
             inputSchema: z.object({
+                // figma-mcp-server 定制
+                strictNames: z.boolean().optional().describe("false 时跳过 nodeName 一致性校验（节点被改名后脚本仍可用，靠 nodeId 定位）"),
                 nodeId: z.string().describe("The ID of the text node to modify"),
                 nodeName: z.string().describe("The node's current exact name, passed back verbatim from `node_info`."),
                 // figma-mcp-server 定制：与 style_manage 对齐

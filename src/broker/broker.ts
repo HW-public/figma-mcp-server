@@ -97,6 +97,27 @@ function summarizeForAudit(args: unknown): string {
     return s.length > 100 ? `${s.slice(0, 100)}…` : s;
 }
 
+// figma-mcp-server 定制: 解析图像字节流的像素尺寸（PNG 读 IHDR，JPEG 扫 SOF 段），
+// 供 node_export_visual 落盘 maxDimension 保护用；格式不认识返回 undefined（不阻断）
+function imageDimensions(bytes: Buffer): { width: number; height: number } | undefined {
+    if (bytes.length > 24 && bytes.readUInt32BE(0) === 0x89504e47) { // PNG: \x89PNG
+        return { width: bytes.readUInt32BE(16), height: bytes.readUInt32BE(20) };
+    }
+    if (bytes.length > 4 && bytes[0] === 0xff && bytes[1] === 0xd8) { // JPEG: FFD8
+        let off = 2;
+        while (off + 9 < bytes.length) {
+            if (bytes[off] !== 0xff) { off++; continue; }
+            const marker = bytes[off + 1];
+            // SOF0-SOF15（排除 DHT/JPG/DAC 非帧段）：段内高 2 字节 + 宽 2 字节
+            if (marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc) {
+                return { height: bytes.readUInt16BE(off + 5), width: bytes.readUInt16BE(off + 7) };
+            }
+            off += 2 + bytes.readUInt16BE(off + 2);
+        }
+    }
+    return undefined;
+}
+
 function ensureToken(config: Config): string {
     try {
         if (existsSync(config.brokerTokenFile)) {
@@ -150,7 +171,9 @@ const TRANSLATE_CODE_DICT: Record<string, string> = {
     MISSING_SOURCE_INSTANCE_ID: '[中文] 缺少源组件实例 ID：请先 instance_get_overrides 读取当前实例 id，原样传回',
 };
 
-interface QueueEntry {    owner: number; // socket id，断开时清理其未执行项
+interface QueueEntry {
+    owner: number; // socket id，断开时清理其未执行项
+    enqueuedAt: number; // figma-mcp-server 定制: 入队时间，出队时算 waitMs 做拥塞可见
     run: () => Promise<unknown>;
     resolve: (v: unknown) => void;
     reject: (e: Error) => void;
@@ -328,10 +351,15 @@ class Broker {
         return new Promise<T>((resolve, reject) => {
             this.queue.push({
                 owner,
+                enqueuedAt: Date.now(),
                 run: run as () => Promise<unknown>,
                 resolve: resolve as (v: unknown) => void,
                 reject,
             });
+            // figma-mcp-server 定制: 拥塞可见——队列积压超过 8 个调用即告警
+            if (this.queue.length > 8) {
+                log(this.config, `[拥堵] 队列积压 ${this.queue.length} 个调用`);
+            }
             void this.drain();
         });
     }
@@ -341,6 +369,11 @@ class Broker {
         this.draining = true;
         while (this.queue.length > 0) {
             const entry = this.queue.shift()!;
+            // figma-mcp-server 定制: 拥塞可见——排队超 15s 的调用出队时记一行等待时长
+            const waitMs = Date.now() - entry.enqueuedAt;
+            if (waitMs > 15000) {
+                log(this.config, `[拥堵] 调用排队等待 ${(waitMs / 1000).toFixed(1)}s，队列长度 ${this.queue.length}`);
+            }
             try {
                 entry.resolve(await entry.run());
             } catch (e) {
@@ -497,6 +530,61 @@ class Broker {
                 result = await this.mcpClient.callTool({ name, arguments: args });
             }
         }
+        // figma-mcp-server 定制: node_export_visual + args.filePath → base64 图像落盘，
+        // 大图不挤占 MCP 上下文；写文件失败不阻断，回退原样返回
+        if (name === 'node_export_visual' && typeof (args as { filePath?: unknown }).filePath === 'string') {
+            const maxDim = (args as { maxDimension?: unknown }).maxDimension;
+            return this.persistExportedImage(
+                result,
+                (args as { filePath: string }).filePath,
+                typeof maxDim === 'number' && maxDim > 0 ? maxDim : 4096,
+            );
+        }
+        return result;
+    }
+
+    /** node_export_visual 落盘：structuredContent 里的 base64 字段（实测为顶层 imageData，SVG 时为 svg 无 base64）
+     *  写入 filePath，原位替换为 {filePath, bytes}；写失败/无 base64 均回退原样返回并 log。
+     *  maxDimension 保护（默认 4096）：解析 PNG IHDR / JPEG SOF 得到像素尺寸，超限拒绝落盘并说明（截断需重编码，broker 不做） */
+    private persistExportedImage(result: unknown, filePath: string, maxDimension: number): unknown {
+        const env = (result as { structuredContent?: Record<string, unknown> })?.structuredContent;
+        if (!env) return result;
+        let key: 'imageData' | 'data' | undefined;
+        if (typeof env.imageData === 'string') key = 'imageData';
+        else if (typeof env.data === 'string') key = 'data';
+        const nested = (env.image as Record<string, unknown> | undefined)?.base64;
+        try {
+            if (key) {
+                const bytes = Buffer.from(env[key] as string, 'base64');
+                const dims = imageDimensions(bytes);
+                if (dims && Math.max(dims.width, dims.height) > maxDimension) {
+                    // figma-mcp-server 定制: 超限拒绝——throw 走 execToolWrapped 的错误翻译，客户端拿到明确原因
+                    throw new Error(`node_export_visual 导出图 ${dims.width}x${dims.height} 超过 maxDimension=${maxDimension}，已拒绝落盘：请降低 scale 或调大 maxDimension 重试`);
+                }
+                if (bytes.length > 5 * 1024 * 1024) {
+                    log(this.config, `node_export_visual 落盘警告: ${Math.round(bytes.length / 1024 / 1024)}MB > 5MB（${filePath}）`);
+                }
+                writeFileSync(filePath, bytes);
+                env[key] = { filePath, bytes: bytes.length };
+            } else if (typeof nested === 'string') {
+                const bytes = Buffer.from(nested, 'base64');
+                const dims = imageDimensions(bytes);
+                if (dims && Math.max(dims.width, dims.height) > maxDimension) {
+                    throw new Error(`node_export_visual 导出图 ${dims.width}x${dims.height} 超过 maxDimension=${maxDimension}，已拒绝落盘：请降低 scale 或调大 maxDimension 重试`);
+                }
+                if (bytes.length > 5 * 1024 * 1024) {
+                    log(this.config, `node_export_visual 落盘警告: ${Math.round(bytes.length / 1024 / 1024)}MB > 5MB（${filePath}）`);
+                }
+                writeFileSync(filePath, bytes);
+                env.image = { filePath, bytes: bytes.length };
+            } else {
+                log(this.config, 'node_export_visual 落盘: structuredContent 无 base64 字段（SVG？），原样返回');
+            }
+        } catch (e) {
+            // figma-mcp-server 定制: 超限拒绝要向上抛给客户端；仅写文件失败才回退原样返回
+            if ((e as Error).message.includes('maxDimension')) throw e;
+            log(this.config, `node_export_visual 落盘失败: ${(e as Error).message}，原样返回`);
+        }
         return result;
     }
 
@@ -510,12 +598,31 @@ class Broker {
         return cur;
     }
 
-    /** 深度解析 args 中的 @opN.path 引用（N=同批 op 序号，path=该 op 返回结果的字段路径） */
-    private resolveRefs(value: unknown, prior: unknown[]): unknown {
+    /** 深度解析 args 中的 @opN.path / @名字.path 引用（N=同批 op 序号；名字=op.clientRef，
+     *  优先按 clientRef 匹配，未命中回退数字索引；path=该 op 返回结果的字段路径） */
+    private resolveRefs(
+        value: unknown,
+        prior: unknown[],
+        ops: Array<{ name: string; clientRef?: string }>,
+    ): unknown {
         if (typeof value === 'string') {
-            const m = /^@op(\d+)\.(.+)$/.exec(value);
+            const m = /^@([\w-]+)\.(.+)$/.exec(value);
             if (!m) return value;
-            const idx = parseInt(m[1], 10);
+            // figma-mcp-server 定制: @名字.路径——先按 clientRef 匹配
+            const refName = m[1];
+            let idx = /^op\d+$/.test(refName) ? -1 : ops.findIndex((op) => op.clientRef === refName);
+            if (idx < 0) {
+                // figma-mcp-server 定制: 回退数字索引（兼容 "@opN" 与裸 "@N"）
+                const digits = /^op(\d+)$/.exec(refName)?.[1] ?? (/^\d+$/.test(refName) ? refName : '');
+                idx = digits === '' ? -1 : parseInt(digits, 10);
+            }
+            if (idx < 0 || idx >= prior.length) {
+                const available = ops
+                    .map((op, i) => (op.clientRef ? `${op.clientRef}(=#${i})` : null))
+                    .filter(Boolean)
+                    .join(', ');
+                throw new Error(`batch 引用未解析: "${value}"（没有 clientRef 为 "${refName}" 的 op，索引 ${refName} 也无已完成结果；可用 clientRef: ${available || '无'}；可用索引: 0..${prior.length - 1}）`);
+            }
             let cur = this.lookupPath(prior[idx], m[2]);
             // MCP 工具返回是信封 {content, structuredContent}：顶层取不到时回退 structuredContent
             if (cur === undefined) {
@@ -529,47 +636,70 @@ class Broker {
             }
             return cur;
         }
-        if (Array.isArray(value)) return value.map((v) => this.resolveRefs(v, prior));
+        if (Array.isArray(value)) return value.map((v) => this.resolveRefs(v, prior, ops));
         if (value !== null && typeof value === 'object') {
             const out: Record<string, unknown> = {};
-            for (const [k, v] of Object.entries(value)) out[k] = this.resolveRefs(v, prior);
+            for (const [k, v] of Object.entries(value)) out[k] = this.resolveRefs(v, prior, ops);
             return out;
         }
         return value;
     }
 
-    /** 批量执行：作为一个队列单元串行执行，默认遇错继续并汇总结果 */
+    /** 批量执行：作为一个队列单元串行执行，默认遇错继续并汇总结果。
+     *  verbose=true（显式）回全量结果；默认每个成功 op 只回 {index,name,clientRef?,id?,durationMs?} 摘要 */
     private async execBatch(
-        ops: Array<{ name: string; args?: Record<string, unknown> }>,
+        ops: Array<{ name: string; args?: Record<string, unknown>; clientRef?: string }>,
         abortOnError: boolean,
         verbose: boolean,
     ): Promise<unknown> {
         const MAX_OPS = 200;
         const trimmed = ops.slice(0, MAX_OPS);
+        // figma-mcp-server 定制: clientRef 冲突检测——同批同名 clientRef 直接报错（列 op 序号），不静默覆盖
+        const seenRefs = new Map<string, number>();
+        for (let i = 0; i < trimmed.length; i++) {
+            const ref = trimmed[i].clientRef;
+            if (!ref) continue;
+            const prev = seenRefs.get(ref);
+            if (prev !== undefined) {
+                throw new Error(`batch clientRef 冲突: op#${prev} 与 op#${i} 都声明了 "${ref}"，同名引用会互相覆盖；请给其中一个改名`);
+            }
+            seenRefs.set(ref, i);
+        }
         const results: Array<Record<string, unknown>> = [];
+        const fullResults: Array<Record<string, unknown>> = [];
         const rawByIndex: unknown[] = [];
-        const failures: Array<{ index: number; name: string; code?: string; message: string }> = [];
+        const failures: Array<{ index: number; name: string; args?: Record<string, unknown>; code?: string; message: string }> = [];
         const startedAt = Date.now();
         for (let i = 0; i < trimmed.length; i++) {
             const op = trimmed[i];
             try {
-                const resolvedArgs = this.resolveRefs(op.args ?? {}, rawByIndex) as Record<string, unknown>;
+                const resolvedArgs = this.resolveRefs(op.args ?? {}, rawByIndex, trimmed) as Record<string, unknown>;
                 const result = await this.execToolWrapped(op.name, resolvedArgs);
                 if ((result as { isError?: boolean }).isError) {
                     // figma-mcp-server 定制: isError 项计入 failed，failures 带 code/message 摘要（修 allOk 虚高）
                     const message = extractContentText(result).slice(0, 200);
                     const code = extractErrorCode(message);
-                    failures.push({ index: i, name: op.name, ...(code ? { code } : {}), message });
+                    // figma-mcp-server 定制: 失败项回显原始 args，排障靠它（@引用未解析时看到的是提交原样）
+                    failures.push({ index: i, name: op.name, args: op.args ?? {}, ...(code ? { code } : {}), message });
                     results.push({ index: i, ok: false, error: `${code ? `${code}: ` : ''}${message}` });
                     if (abortOnError) break;
                 } else {
                     rawByIndex[i] = result;
-                    results.push({ index: i, ok: true, result });
+                    fullResults.push({ index: i, ok: true, result });
+                    // figma-mcp-server 定制: 默认瘦身——从大结果对象提取摘要字段，防批量大图撑爆上下文
+                    const env = (result as { structuredContent?: Record<string, unknown> })?.structuredContent;
+                    results.push({
+                        index: i,
+                        name: op.name,
+                        ...(op.clientRef ? { clientRef: op.clientRef } : {}),
+                        ...(typeof env?.id === 'string' ? { id: env.id } : {}),
+                        ...(typeof env?.durationMs === 'number' ? { durationMs: env.durationMs } : {}),
+                    });
                 }
             } catch (e) {
                 const message = (e as Error).message.slice(0, 200);
                 const code = extractErrorCode(message);
-                failures.push({ index: i, name: op.name, ...(code ? { code } : {}), message });
+                failures.push({ index: i, name: op.name, args: op.args ?? {}, ...(code ? { code } : {}), message });
                 results.push({ index: i, ok: false, error: `${code ? `${code}: ` : ''}${message}` });
                 if (abortOnError) break;
             }
@@ -587,9 +717,10 @@ class Broker {
             failed: failures.length,
             allOk: failures.length === 0,
         };
-        return verbose === false
-            ? { ...summary, failures }
-            : { ...summary, results };
+        // figma-mcp-server 定制: 默认只回摘要（results 为瘦身项 + failures）；verbose=true 才回全量结果
+        return verbose
+            ? { ...summary, results: fullResults }
+            : { ...summary, results, failures };
     }
 
     // ---- 客户端连接 ----
@@ -673,9 +804,10 @@ class Broker {
             case 'tools/batch':
                 this.enqueue(getId(), () =>
                     this.execBatch(
-                        (msg.ops ?? []) as Array<{ name: string; args?: Record<string, unknown> }>,
+                        (msg.ops ?? []) as Array<{ name: string; args?: Record<string, unknown>; clientRef?: string }>,
                         Boolean(msg.abortOnError),
-                        msg.verbose !== false,
+                        // figma-mcp-server 定制: 默认瘦身摘要，verbose 显式 true 才回全量结果
+                        msg.verbose === true,
                     ),
                 ).then(
                     (result) => send({ type: 'batch-result', id: msg.id, ...(result as object) }),

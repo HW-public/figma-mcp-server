@@ -2,7 +2,7 @@
 
 扫描标记：`figma-mcp-server 定制` ｜ 范围：`src/bridge、src/tools、src/protocol、plugin` ｜ 由 `scripts/list-customizations.mjs` 生成
 
-共 60 处：
+共 105 处：
 
 - `src/bridge/server.ts:68` — // figma-mcp-server 定制：供 broker 以 --fe-child=server spawn 自身时路由调用
 - `src/bridge/socket.ts:40` — /** figma-mcp-server 定制：心跳漏计（半开连接检测） */
@@ -15,36 +15,69 @@
 - `src/tools/component.ts:58` — // figma-mcp-server 定制：也接受 library component key
 - `src/tools/component.ts:60` — // figma-mcp-server 定制：与 defaultValue 对齐
 - `src/tools/component.ts:110` — // figma-mcp-server 定制：统一 propertyName 措辞
-- `src/tools/create.ts:41` — // figma-mcp-server 定制：修正默认值描述（Figma star 缺省内径，并非固定 1.0）
-- `src/tools/create.ts:43` — // figma-mcp-server 定制：创建时即设圆角（RECTANGLE only，插件侧 handler 已支持）
-- `src/tools/create.ts:80` — // figma-mcp-server 定制：broker 侧省略时补白色填充
-- `src/tools/create.ts:90` — // figma-mcp-server 定制：以下布局参数仅在 layoutMode 为 HORIZONTAL/VERTICAL 时生效
-- `src/tools/create.ts:101` — // figma-mcp-server 定制：创建时即设圆角（插件侧 handler 已支持）
-- `src/tools/create.ts:123` — // figma-mcp-server 定制：Create Section Tool（分区——合法导航容器，子帧可作为 NAVIGATE 目标）
-- `src/tools/create.ts:174` — // figma-mcp-server 定制：broker 侧省略时补黑色
-- `src/tools/create.ts:176` — // figma-mcp-server 定制：broker 侧省略时默认 'Text'
-- `src/tools/create.ts:180` — // figma-mcp-server 定制：固定宽自动换行 + 对齐/行高/字距（插件侧 handler 已支持）
-- `src/tools/create.ts:241` — // figma-mcp-server 定制：描述对齐实际行为（新建组件 + 迁移 children + 删除原 frame）
-- `src/tools/create.ts:297` — // figma-mcp-server 定制：描述补 propertyValues 约束与组件重命名行为
-- `src/tools/create.ts:303` — // figma-mcp-server 定制：约束在描述中声明，插件侧校验
-- `src/tools/create.ts:306` — // figma-mcp-server 定制：至少一个属性
+- `src/tools/create.ts:15` — // figma-mcp-server 定制：坐标系契约，默认 parent=父级相对
+- `src/tools/create.ts:18` — // figma-mcp-server 定制：坐标系，默认 parent=父级相对（将切换为 canvas 另行通知）
+- `src/tools/create.ts:38` — // figma-mcp-server 定制：与 create_frame 对齐
+- `src/tools/create.ts:46` — // figma-mcp-server 定制：修正默认值描述（Figma star 缺省内径，并非固定 1.0）
+- `src/tools/create.ts:48` — // figma-mcp-server 定制：创建时即设圆角（RECTANGLE only，插件侧 handler 已支持）
+- `src/tools/create.ts:73` — // figma-mcp-server 定制：坐标系契约，默认 parent=父级相对
+- `src/tools/create.ts:76` — // figma-mcp-server 定制：坐标系，默认 parent=父级相对（将切换为 canvas 另行通知）
+- `src/tools/create.ts:88` — // figma-mcp-server 定制：broker 侧省略时补白色填充
+- `src/tools/create.ts:98` — // figma-mcp-server 定制：以下布局参数仅在 layoutMode 为 HORIZONTAL/VERTICAL 时生效
+- `src/tools/create.ts:109` — // figma-mcp-server 定制：创建时即设圆角（插件侧 handler 已支持）
+- `src/tools/create.ts:131` — // figma-mcp-server 定制：Create Section Tool（分区——合法导航容器，子帧可作为 NAVIGATE 目标）
+- `src/tools/create.ts:138` — // figma-mcp-server 定制：坐标系契约，默认 parent=父级相对
+- `src/tools/create.ts:141` — // figma-mcp-server 定制：坐标系，默认 parent=父级相对（将切换为 canvas 另行通知）
+- `src/tools/create.ts:174` — // figma-mcp-server 定制：坐标系契约，默认 parent=父级相对
+- `src/tools/create.ts:177` — // figma-mcp-server 定制：坐标系，默认 parent=父级相对（将切换为 canvas 另行通知）
+- `src/tools/create.ts:188` — // figma-mcp-server 定制：broker 侧省略时补黑色
+- `src/tools/create.ts:190` — // figma-mcp-server 定制：broker 侧省略时默认 'Text'
+- `src/tools/create.ts:194` — // figma-mcp-server 定制：固定宽自动换行 + 对齐/行高/字距（插件侧 handler 已支持）
+- `src/tools/create.ts:232` — // figma-mcp-server 定制：坐标系契约，默认 parent=父级相对
+- `src/tools/create.ts:235` — // figma-mcp-server 定制：坐标系，默认 parent=父级相对（将切换为 canvas 另行通知）
+- `src/tools/create.ts:258` — // figma-mcp-server 定制：描述对齐实际行为（新建组件 + 迁移 children + 删除原 frame）
+- `src/tools/create.ts:314` — // figma-mcp-server 定制：描述补 propertyValues 约束与组件重命名行为
+- `src/tools/create.ts:320` — // figma-mcp-server 定制：约束在描述中声明，插件侧校验
+- `src/tools/create.ts:323` — // figma-mcp-server 定制：至少一个属性
 - `src/tools/instance.ts:17` — // figma-mcp-server 定制：统一 propertyName 措辞
 - `src/tools/instance.ts:19` — // figma-mcp-server 定制：补充本地节点 ID/库 key 与 BOOLEAN 字符串形态
 - `src/tools/instance.ts:42` — // figma-mcp-server 定制：实际仅返回 overridesCount
 - `src/tools/node.ts:116` — // figma-mcp-server 定制：描述补 auto-layout 限制
-- `src/tools/node.ts:133` — // figma-mcp-server 定制：HUG/FILL 被打回 FIXED 等降级经 warnings 返回
-- `src/tools/node.ts:275` — // figma-mcp-server 定制：nodes 至少 2 个，且必须同父
-- `src/tools/node.ts:396` — // figma-mcp-server 定制：描述补 NONE 拒绝布局参数、BASELINE 限制、适用节点类型、layoutWrap 限制
-- `src/tools/node.ts:482` — // figma-mcp-server 定制：渐变约束补全（clamp、GRADIENT_ 前缀、≥2 stops）
-- `src/tools/node.ts:542` — // figma-mcp-server 定制：渐变填充透传插件 handler
-- `src/tools/node.ts:577` — // figma-mcp-server 定制：broker 侧省略时默认 1
+- `src/tools/node.ts:121` — // figma-mcp-server 定制：false 时跳过 nodeName 一致性校验（节点改名后脚本仍可用，靠 nodeId 定位）
+- `src/tools/node.ts:123` — // figma-mcp-server 定制：坐标系契约，默认 parent=父级相对
+- `src/tools/node.ts:126` — // figma-mcp-server 定制：坐标系，默认 parent=父级相对（将切换为 canvas 另行通知）
+- `src/tools/node.ts:138` — // figma-mcp-server 定制：HUG/FILL 被打回 FIXED 等降级经 warnings 返回
+- `src/tools/node.ts:161` — // figma-mcp-server 定制：false 时跳过 nodeName 一致性校验（节点改名后脚本仍可用，靠 nodeId 定位）
+- `src/tools/node.ts:192` — // figma-mcp-server 定制：false 时跳过 nodeName 一致性校验（节点改名后脚本仍可用，靠 nodeId 定位）
+- `src/tools/node.ts:199` — // figma-mcp-server 定制：false 时跳过 nodeName 一致性校验（节点改名后脚本仍可用，靠 nodeId 定位）
+- `src/tools/node.ts:232` — // figma-mcp-server 定制：false 时跳过 nodeName 一致性校验（节点改名后脚本仍可用，靠 nodeId 定位）
+- `src/tools/node.ts:288` — // figma-mcp-server 定制：nodes 至少 2 个，且必须同父
+- `src/tools/node.ts:296` — // figma-mcp-server 定制：false 时跳过 nodeName 一致性校验（节点改名后脚本仍可用，靠 nodeId 定位）
+- `src/tools/node.ts:328` — // figma-mcp-server 定制：false 时跳过 nodeName 一致性校验（节点改名后脚本仍可用，靠 nodeId 定位）
+- `src/tools/node.ts:358` — // figma-mcp-server 定制：false 时跳过 nodeName 一致性校验（节点改名后脚本仍可用，靠 nodeId 定位）
+- `src/tools/node.ts:389` — // figma-mcp-server 定制：false 时跳过 nodeName 一致性校验（节点改名后脚本仍可用，靠 nodeId 定位）
+- `src/tools/node.ts:417` — // figma-mcp-server 定制：描述补 NONE 拒绝布局参数、BASELINE 限制、适用节点类型、layoutWrap 限制
+- `src/tools/node.ts:422` — // figma-mcp-server 定制：false 时跳过 nodeName 一致性校验（节点改名后脚本仍可用，靠 nodeId 定位）
+- `src/tools/node.ts:496` — // figma-mcp-server 定制：false 时跳过 nodeName 一致性校验（节点改名后脚本仍可用，靠 nodeId 定位）
+- `src/tools/node.ts:507` — // figma-mcp-server 定制：渐变约束补全（clamp、GRADIENT_ 前缀、≥2 stops）
+- `src/tools/node.ts:567` — // figma-mcp-server 定制：渐变填充透传插件 handler
+- `src/tools/node.ts:593` — // figma-mcp-server 定制：false 时跳过 nodeName 一致性校验（节点改名后脚本仍可用，靠 nodeId 定位）
+- `src/tools/node.ts:604` — // figma-mcp-server 定制：broker 侧省略时默认 1
+- `src/tools/node.ts:643` — // figma-mcp-server 定制：false 时跳过 nodeName 一致性校验（节点改名后脚本仍可用，靠 nodeId 定位）
+- `src/tools/node.ts:682` — // figma-mcp-server 定制：false 时跳过 nodeName 一致性校验（节点改名后脚本仍可用，靠 nodeId 定位）
+- `src/tools/node.ts:711` — // figma-mcp-server 定制：false 时跳过 nodeName 一致性校验（节点改名后脚本仍可用，靠 nodeId 定位）
+- `src/tools/node.ts:742` — // figma-mcp-server 定制：false 时跳过 nodeName 一致性校验（节点改名后脚本仍可用，靠 nodeId 定位）
+- `src/tools/node.ts:802` — // figma-mcp-server 定制：存盘模式，省 token
 - `src/tools/page.ts:11` — // figma-mcp-server 定制：实现无批量上限，描述与实际一致
 - `src/tools/reaction.ts:20` — // figma-mcp-server 定制：transition 文档与媒体/导航 action 防坑描述
 - `src/tools/reaction.ts:38` — // figma-mcp-server 定制：注明 Figma 按 trigger.type 校验字段，非法值执行期才报错
+- `src/tools/reaction.ts:85` — // figma-mcp-server 定制
 - `src/tools/style.ts:297` — // figma-mcp-server 定制：与 text_set_style 对齐，Figma 接受 6 值
 - `src/tools/style.ts:387` — // figma-mcp-server 定制：PAINT 只绑 paints[0]；非 PAINT/TEXT 可能抛原始 Figma 错误
-- `src/tools/text.ts:56` — // figma-mcp-server 定制：与 style_manage 对齐
-- `src/tools/text.ts:104` — // figma-mcp-server 定制：handler 不返回 success，插件侧恒补 true
+- `src/tools/text.ts:15` — // figma-mcp-server 定制
+- `src/tools/text.ts:56` — // figma-mcp-server 定制
+- `src/tools/text.ts:60` — // figma-mcp-server 定制：与 style_manage 对齐
+- `src/tools/text.ts:108` — // figma-mcp-server 定制：handler 不返回 success，插件侧恒补 true
 - `src/tools/variable.ts:79` — // figma-mcp-server 定制：ADD_MODE 幂等性与远端集合限制
 - `src/tools/variable.ts:85` — // figma-mcp-server 定制：CREATE 不可设描述
 - `src/tools/variable.ts:120` — // figma-mcp-server 定制：UPDATE RGBA 必须带 a；CREATE 默认 a=1
@@ -54,13 +87,25 @@
 - `src/tools/variable.ts:282` — // figma-mcp-server 定制：handler 返回 deleted/deletedCollection，无 message
 - `src/protocol/errorCodes.ts:133` — // figma-mcp-server 定制：CHANNEL_NOT_FOUND 为死码——socket 层拒连已改用 PLUGIN_PEER_UNAVAILABLE，全仓库无产生点，保留定义仅作 ratified 契约存档
 - `src/protocol/version.ts:1` — // figma-mcp-server 定制版（上游 readRootPackageMetadata 已删）：频道握手的 serverVersion 必须和
-- `plugin/code.js:7898` — // figma-mcp-server 定制：create_section 分发
-- `plugin/handlers/nodeCreators.ts:339` — // figma-mcp-server 定制：创建 SECTION（分区）——Figma 中合法的导航容器，
+- `plugin/code.js:7982` — // figma-mcp-server 定制：create_section 分发
+- `plugin/handlers/componentHandlers.ts:341` — // figma-mcp-server 定制：maxDimension 上限保护——防止误传大 scale 导出 4x 巨图写爆磁盘
+- `plugin/handlers/componentHandlers.ts:361` — // figma-mcp-server 定制：按 maxDimension 收敛 scale（raster 格式）
+- `plugin/handlers/nodeCreators.ts:91` — // figma-mcp-server 定制：coordinateSpace=canvas 时把画布绝对坐标换算成父级相对坐标（默认 parent=旧行为，将切换 canvas 默认另行通知）
+- `plugin/handlers/nodeCreators.ts:256` — // figma-mcp-server 定制：coordinateSpace=canvas 时把画布绝对坐标换算成父级相对坐标（默认 parent=旧行为，将切换 canvas 默认另行通知）
+- `plugin/handlers/nodeCreators.ts:359` — // figma-mcp-server 定制：创建 SECTION（分区）——Figma 中合法的导航容器，
+- `plugin/handlers/nodeCreators.ts:381` — // figma-mcp-server 定制：coordinateSpace=canvas 时把画布绝对坐标换算成父级相对坐标（默认 parent=旧行为，将切换 canvas 默认另行通知）
+- `plugin/handlers/nodeCreators.ts:484` — // figma-mcp-server 定制：coordinateSpace=canvas 时把画布绝对坐标换算成父级相对坐标（默认 parent=旧行为，将切换 canvas 默认另行通知）
+- `plugin/handlers/nodeModifiers.ts:51` — // figma-mcp-server 定制：coordinateSpace=canvas 时把画布绝对坐标换算成父级相对坐标（默认 parent=旧行为，将切换 canvas 默认另行通知）
 - `plugin/handlers/prototypingHandlers.ts:165` — // figma-mcp-server 定制：向上找"屏"——parent 为 PAGE 或 SECTION 即顶层（Figma 导航目标规则）
 - `plugin/handlers/prototypingHandlers.ts:203` — // figma-mcp-server 定制：NAVIGATE 目标预校验——Figma API 的错误把"目标不存在/非顶层/跨页"混成一句，
 - `plugin/handlers/prototypingHandlers.ts:233` — // figma-mcp-server 定制：Figma API 可能抛非 Error 值（undefined/字符串），必须安全序列化，否则错误链路断成 "undefined"
 - `plugin/handlers/prototypingHandlers.ts:235` — // figma-mcp-server 定制：Figma 内部超时的文案说"check your internet"有误导——实际是插件↔Figma 桌面端连接问题
 - `plugin/handlers/stylingHandlers.ts:43` — // figma-mcp-server 定制：gradient 计入模式计数，否则 gradient-only 会在此被误拦（gradient 分支变死代码）
-- `plugin/src/main.ts:335` — // figma-mcp-server 定制：插件侧执行计时，随 result 回传，供 broker 审计行做耗时分解
-- `plugin/src/main.ts:337` — // figma-mcp-server 定制：单命令超时——Figma API 偶发永不返回（如网络中断时），
-- `plugin/src/main.ts:486` — // figma-mcp-server 定制：create_section 分发
+- `plugin/handlers/stylingHandlers.ts:84` — // figma-mcp-server 定制：gradientTransform 便捷角度 —— 支持 number 或 {angle:number}（度，顺时针，0=从上到下渐变，180=向上），
+- `plugin/handlers/vectorHandlers.ts:21` — // figma-mcp-server 定制：coordinateSpace=canvas 时把画布绝对坐标换算成父级相对坐标（默认 parent=旧行为，将切换 canvas 默认另行通知）
+- `plugin/src/main.ts:127` — // figma-mcp-server 定制：strictNames===false 时跳过节点名校验（scope/locked/instance 等其他校验保留）
+- `plugin/src/main.ts:144` — // figma-mcp-server 定制：strictNames===false 时跳过父节点名校验
+- `plugin/src/main.ts:337` — // figma-mcp-server 定制：插件侧执行计时，随 result 回传，供 broker 审计行做耗时分解
+- `plugin/src/main.ts:339` — // figma-mcp-server 定制：单命令超时——Figma API 偶发永不返回（如网络中断时），
+- `plugin/src/main.ts:488` — // figma-mcp-server 定制：create_section 分发
+- `plugin/utils/nodeUtils.ts:368` — * figma-mcp-server 定制：计算某节点在画布上的绝对原点。

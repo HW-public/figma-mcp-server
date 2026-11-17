@@ -124,7 +124,8 @@ function assertNotScopeRoot(nodeId: string) {
 async function validateSingleNodeWrite(params: any, options: { checkScopeRoot?: boolean, checkLocked?: boolean, instanceCheckVerb?: string, checkRemoteAsset?: boolean }) {
     if (!state.allowEditNode) throw new Error(ERRORS.READ_ONLY_MODE);
     if (!(await checkScopeAccess(params ? params.nodeId : null))) throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
-    if (!(await verifyNodeName(params ? params.nodeId : null, params ? params.nodeName : null))) throw new Error(ERRORS.NAME_MISMATCH);
+    // figma-mcp-server 定制：strictNames===false 时跳过节点名校验（scope/locked/instance 等其他校验保留）
+    if (params?.strictNames !== false && !(await verifyNodeName(params ? params.nodeId : null, params ? params.nodeName : null))) throw new Error(ERRORS.NAME_MISMATCH);
     const node = await figma.getNodeByIdAsync(params?.nodeId);
     if (node) {
         if (options.checkScopeRoot) assertNotScopeRoot(node.id);
@@ -140,7 +141,8 @@ async function validateSingleNodeWrite(params: any, options: { checkScopeRoot?: 
 async function validateParentWrite(params: any, options: { checkLocked?: boolean, instanceCheckVerb?: string }) {
     if (!state.allowEditNode) throw new Error(ERRORS.READ_ONLY_MODE);
     if (!(await checkScopeAccess(params ? params.parentId : null))) throw new Error(formatScopeError(ERRORS.PARENT_OUTSIDE_SCOPE));
-    await verifyParentNameOrThrow(params ? params.parentId : null, params ? params.parentNodeName : null);
+    // figma-mcp-server 定制：strictNames===false 时跳过父节点名校验
+    if (params?.strictNames !== false) await verifyParentNameOrThrow(params ? params.parentId : null, params ? params.parentNodeName : null);
     const parent = await figma.getNodeByIdAsync(params?.parentId);
     if (parent) {
         if (options.checkLocked) assertNotLocked(parent);

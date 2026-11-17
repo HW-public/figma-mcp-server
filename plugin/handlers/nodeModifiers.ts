@@ -5,7 +5,7 @@
 
 import { generateCommandId, sendProgressUpdate } from '../utils/progressUtils.js';
 import { delay } from '../utils/helpers.js';
-import { getContainingPageNode, isAncestorOf } from '../utils/nodeUtils.js';
+import { getContainingPageNode, isAncestorOf, getAbsoluteOffset } from '../utils/nodeUtils.js';
 import { batchEnvelope } from '../utils/batchResult.js';
 import { describeError } from '../utils/errors.js';
 import { assertNonEmptyExplicitName } from '../utils/creatorValidation.js';
@@ -21,7 +21,7 @@ import { assertNonEmptyExplicitName } from '../utils/creatorValidation.js';
  * @returns {Promise<Object>} Updated node info
  */
 export async function transformNode(params: any) {
-    const { nodeId, x, y, width, height } = params || {};
+    const { nodeId, x, y, width, height, coordinateSpace = "parent" } = params || {};
 
     if (!nodeId) {
         throw new Error("Missing nodeId parameter");
@@ -48,8 +48,17 @@ export async function transformNode(params: any) {
             }
         }
 
-        if (x !== undefined) node.x = x;
-        if (y !== undefined) node.y = y;
+        // figma-mcp-server 定制：coordinateSpace=canvas 时把画布绝对坐标换算成父级相对坐标（默认 parent=旧行为，将切换 canvas 默认另行通知）
+        let targetX = x;
+        let targetY = y;
+        if (coordinateSpace === "canvas") {
+            const offset = await getAbsoluteOffset(parent);
+            if (x !== undefined) targetX = x - offset.x;
+            if (y !== undefined) targetY = y - offset.y;
+        }
+
+        if (targetX !== undefined) node.x = targetX;
+        if (targetY !== undefined) node.y = targetY;
     }
 
     // Apply width and height if provided
