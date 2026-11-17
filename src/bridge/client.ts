@@ -165,6 +165,7 @@ export type FigmaCommand =
     // create
     | "create_shape"
     | "create_frame"
+    | "create_section"
     | "create_text"
     | "create_svg"
     | "create_component"
