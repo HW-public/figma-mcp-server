@@ -120,6 +120,39 @@ export function registerCreateTools(server: McpServer) {
         }
     );
 
+    // figma-mcp-server 定制：Create Section Tool（分区——合法导航容器，子帧可作为 NAVIGATE 目标）
+    server.registerTool(
+        "create_section",
+        {
+            title: "Create Section",
+            description: "Create a SECTION (分区/屏幕分组容器). Section children count as top-level for prototype NAVIGATE destinations — prefer sections over wrapper frames when organizing screens. Children keep absolute canvas position when reparented in.",
+            inputSchema: z.object({
+                x: z.number().describe("X position"),
+                y: z.number().describe("Y position"),
+                width: z.number().positive().describe("Width of the section"),
+                height: z.number().positive().describe("Height of the section"),
+                name: z.string().min(1).optional().describe("Optional non-empty name for the section"),
+                parentId: z.string().describe("Parent node ID to append the section to (usually a PAGE id)"),
+                parentNodeName: z.string().describe("The parent node's current exact name, passed back verbatim from `node_info`."),
+            }),
+            outputSchema: looseOutput({
+                id: z.string().describe("ID of the created section"),
+                name: z.string().describe("Name of the created section"),
+                parentId: z.string().optional().describe("ID of the parent the section was placed into"),
+            }),
+            annotations: {
+                openWorldHint: true
+            }
+        },
+        async (params: any) => {
+            const result = await sendCommandToFigma("create_section", {
+                ...params,
+                name: params.name ?? "Section",
+            });
+            return toolResult(result);
+        }
+    );
+
     // 3. Create Text Tool
     server.registerTool(
         "create_text",

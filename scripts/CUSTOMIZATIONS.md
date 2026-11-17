@@ -2,7 +2,7 @@
 
 扫描标记：`figma-mcp-server 定制` ｜ 范围：`src/bridge、src/tools、src/protocol、plugin` ｜ 由 `scripts/list-customizations.mjs` 生成
 
-共 56 处：
+共 60 处：
 
 - `src/bridge/server.ts:68` — // figma-mcp-server 定制：供 broker 以 --fe-child=server spawn 自身时路由调用
 - `src/bridge/socket.ts:40` — /** figma-mcp-server 定制：心跳漏计（半开连接检测） */
@@ -20,13 +20,14 @@
 - `src/tools/create.ts:80` — // figma-mcp-server 定制：broker 侧省略时补白色填充
 - `src/tools/create.ts:90` — // figma-mcp-server 定制：以下布局参数仅在 layoutMode 为 HORIZONTAL/VERTICAL 时生效
 - `src/tools/create.ts:101` — // figma-mcp-server 定制：创建时即设圆角（插件侧 handler 已支持）
-- `src/tools/create.ts:141` — // figma-mcp-server 定制：broker 侧省略时补黑色
-- `src/tools/create.ts:143` — // figma-mcp-server 定制：broker 侧省略时默认 'Text'
-- `src/tools/create.ts:147` — // figma-mcp-server 定制：固定宽自动换行 + 对齐/行高/字距（插件侧 handler 已支持）
-- `src/tools/create.ts:208` — // figma-mcp-server 定制：描述对齐实际行为（新建组件 + 迁移 children + 删除原 frame）
-- `src/tools/create.ts:264` — // figma-mcp-server 定制：描述补 propertyValues 约束与组件重命名行为
-- `src/tools/create.ts:270` — // figma-mcp-server 定制：约束在描述中声明，插件侧校验
-- `src/tools/create.ts:273` — // figma-mcp-server 定制：至少一个属性
+- `src/tools/create.ts:123` — // figma-mcp-server 定制：Create Section Tool（分区——合法导航容器，子帧可作为 NAVIGATE 目标）
+- `src/tools/create.ts:174` — // figma-mcp-server 定制：broker 侧省略时补黑色
+- `src/tools/create.ts:176` — // figma-mcp-server 定制：broker 侧省略时默认 'Text'
+- `src/tools/create.ts:180` — // figma-mcp-server 定制：固定宽自动换行 + 对齐/行高/字距（插件侧 handler 已支持）
+- `src/tools/create.ts:241` — // figma-mcp-server 定制：描述对齐实际行为（新建组件 + 迁移 children + 删除原 frame）
+- `src/tools/create.ts:297` — // figma-mcp-server 定制：描述补 propertyValues 约束与组件重命名行为
+- `src/tools/create.ts:303` — // figma-mcp-server 定制：约束在描述中声明，插件侧校验
+- `src/tools/create.ts:306` — // figma-mcp-server 定制：至少一个属性
 - `src/tools/instance.ts:17` — // figma-mcp-server 定制：统一 propertyName 措辞
 - `src/tools/instance.ts:19` — // figma-mcp-server 定制：补充本地节点 ID/库 key 与 BOOLEAN 字符串形态
 - `src/tools/instance.ts:42` — // figma-mcp-server 定制：实际仅返回 overridesCount
@@ -53,6 +54,8 @@
 - `src/tools/variable.ts:282` — // figma-mcp-server 定制：handler 返回 deleted/deletedCollection，无 message
 - `src/protocol/errorCodes.ts:133` — // figma-mcp-server 定制：CHANNEL_NOT_FOUND 为死码——socket 层拒连已改用 PLUGIN_PEER_UNAVAILABLE，全仓库无产生点，保留定义仅作 ratified 契约存档
 - `src/protocol/version.ts:1` — // figma-mcp-server 定制版（上游 readRootPackageMetadata 已删）：频道握手的 serverVersion 必须和
+- `plugin/code.js:7898` — // figma-mcp-server 定制：create_section 分发
+- `plugin/handlers/nodeCreators.ts:339` — // figma-mcp-server 定制：创建 SECTION（分区）——Figma 中合法的导航容器，
 - `plugin/handlers/prototypingHandlers.ts:165` — // figma-mcp-server 定制：向上找"屏"——parent 为 PAGE 或 SECTION 即顶层（Figma 导航目标规则）
 - `plugin/handlers/prototypingHandlers.ts:203` — // figma-mcp-server 定制：NAVIGATE 目标预校验——Figma API 的错误把"目标不存在/非顶层/跨页"混成一句，
 - `plugin/handlers/prototypingHandlers.ts:233` — // figma-mcp-server 定制：Figma API 可能抛非 Error 值（undefined/字符串），必须安全序列化，否则错误链路断成 "undefined"
@@ -60,3 +63,4 @@
 - `plugin/handlers/stylingHandlers.ts:43` — // figma-mcp-server 定制：gradient 计入模式计数，否则 gradient-only 会在此被误拦（gradient 分支变死代码）
 - `plugin/src/main.ts:335` — // figma-mcp-server 定制：插件侧执行计时，随 result 回传，供 broker 审计行做耗时分解
 - `plugin/src/main.ts:337` — // figma-mcp-server 定制：单命令超时——Figma API 偶发永不返回（如网络中断时），
+- `plugin/src/main.ts:486` — // figma-mcp-server 定制：create_section 分发

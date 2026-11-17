@@ -1808,6 +1808,41 @@ Nothing was deleted. Read each listed consumer's current state with node_info (n
       rethrowAfterCreatorCleanup(error, frame, "create_frame", parentId);
     }
   }
+  async function createSection(params) {
+    const {
+      x = 0,
+      y = 0,
+      width = 1e3,
+      height = 1e3,
+      name = "Section",
+      parentId
+    } = params || {};
+    assertNonEmptyExplicitName(
+      name,
+      "name",
+      "create_section",
+      "Omit name to use the default name."
+    );
+    const parentNode = await resolveAppendableParent(parentId, "create_section");
+    const section = figma.createSection();
+    try {
+      parentNode.appendChild(section);
+      section.x = x;
+      section.y = y;
+      section.resizeWithoutConstraints(width, height);
+      section.name = name;
+      const result = {
+        id: section.id,
+        name: section.name,
+        width: section.width,
+        height: section.height,
+        parentId: section.parent ? section.parent.id : void 0
+      };
+      return result;
+    } catch (error) {
+      rethrowAfterCreatorCleanup(error, section, "create_section", parentId);
+    }
+  }
   function getFontStyle(weight) {
     switch (weight) {
       case 100:
@@ -7860,6 +7895,10 @@ Processing annotation ${i + 1}/${annotations.length}:`,
       case "create_frame":
         await validateParentWrite(params, { checkLocked: true, instanceCheckVerb: "appended to" });
         return await createFrame(params);
+      // figma-mcp-server 定制：create_section 分发
+      case "create_section":
+        await validateParentWrite(params, { checkLocked: true, instanceCheckVerb: "appended to" });
+        return await createSection(params);
       case "create_text":
         await validateParentWrite(params, { checkLocked: true, instanceCheckVerb: "appended to" });
         return await createText(params);

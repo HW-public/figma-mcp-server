@@ -336,6 +336,48 @@ export async function createFrame(params: any) {
     }
 }
 
+// figma-mcp-server 定制：创建 SECTION（分区）——Figma 中合法的导航容器，
+// 子帧可直接作为 NAVIGATE 目标（同页顶层规则对 SECTION 子帧放行）
+export async function createSection(params: any) {
+    const {
+        x = 0,
+        y = 0,
+        width = 1000,
+        height = 1000,
+        name = "Section",
+        parentId,
+    } = params || {};
+
+    assertNonEmptyExplicitName(
+        name,
+        "name",
+        "create_section",
+        "Omit name to use the default name.",
+    );
+
+    const parentNode = await resolveAppendableParent(parentId, "create_section");
+
+    const section = figma.createSection();
+    try {
+        parentNode.appendChild(section);
+        section.x = x;
+        section.y = y;
+        section.resizeWithoutConstraints(width, height);
+        section.name = name;
+
+        const result = {
+            id: section.id,
+            name: section.name,
+            width: section.width,
+            height: section.height,
+            parentId: section.parent ? section.parent.id : undefined,
+        };
+        return result;
+    } catch (error: any) {
+        rethrowAfterCreatorCleanup(error, section, "create_section", parentId);
+    }
+}
+
 /**
  * Maps font weight number to Figma font style name
  * @param {number} weight - Font weight (100-900)

@@ -138,7 +138,7 @@ try {
     console.log(`REST 工具: ${['get_design_context', 'download_images'].filter((n) => names.includes(n)).join(', ')}`);
     const liveOnes = names.filter((n) => ['channel_join', 'page_info', 'create_frame', 'node_info'].includes(n));
     console.log(`Live 工具样例: ${liveOnes.join(', ') || '(未连接)'}`);
-    if (names.length !== 48) { console.log(`✘ 工具总数异常（期望 48）`); failed = true; }
+    if (names.length !== 49) { console.log(`✘ 工具总数异常（期望 49）`); failed = true; }
 
     const callRes = await send('tools/call', {
         name: 'get_design_context',
@@ -153,7 +153,7 @@ try {
     const token = readFileSync(join(stateDir, 'broker.token'), 'utf-8').trim();
     const raw = await brokerCall(token, { type: 'tools/list' });
     const brokerToolCount = raw.tools?.length ?? 0;
-    const countOk = brokerToolCount >= 45;
+    const countOk = brokerToolCount >= 46;
     console.log(`并发客户端直连 broker: ${brokerToolCount} 个 live 工具 ${countOk ? '✔' : '✘ 数量异常'}`);
     if (!countOk) failed = true;
 

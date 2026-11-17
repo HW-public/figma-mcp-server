@@ -11,7 +11,7 @@ import { ERRORS, REFUSALS, formatScopeError as formatScopeErrorForRoot, getStruc
 
 // Import handlers
 import { getNodesInfo, getPagesInfo } from '../handlers/nodeReaders.js';
-import { createShape, createFrame, createText, cloneNode } from '../handlers/nodeCreators.js';
+import { createShape, createFrame, createSection, createText, cloneNode } from '../handlers/nodeCreators.js';
 import { transformNode, deleteMultipleNodes, viewNavigate, setNodeName, groupNodes, ungroupNodes, flattenNode, insertChild } from '../handlers/nodeModifiers.js';
 import { setFillColor, setStroke, setCornerRadius, setEffects } from '../handlers/stylingHandlers.js';
 
@@ -483,6 +483,10 @@ async function handleCommand(command: any, params: any) {
         case "create_frame":
             await validateParentWrite(params, { checkLocked: true, instanceCheckVerb: "appended to" });
             return await createFrame(params);
+        // figma-mcp-server 定制：create_section 分发
+        case "create_section":
+            await validateParentWrite(params, { checkLocked: true, instanceCheckVerb: "appended to" });
+            return await createSection(params);
         case "create_text":
             await validateParentWrite(params, { checkLocked: true, instanceCheckVerb: "appended to" });
             return await createText(params);
