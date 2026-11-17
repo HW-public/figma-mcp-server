@@ -2,10 +2,12 @@
 
 扫描标记：`figma-mcp-server 定制` ｜ 范围：`src/bridge、src/tools、src/protocol、plugin` ｜ 由 `scripts/list-customizations.mjs` 生成
 
-共 49 处：
+共 53 处：
 
 - `src/bridge/server.ts:68` — // figma-mcp-server 定制：供 broker 以 --fe-child=server spawn 自身时路由调用
-- `src/bridge/socket.ts:800` — // figma-mcp-server 定制：供 broker 以 --fe-child=socket spawn 自身时路由调用
+- `src/bridge/socket.ts:40` — /** figma-mcp-server 定制：心跳漏计（半开连接检测） */
+- `src/bridge/socket.ts:111` — // figma-mcp-server 定制：WS 心跳——检测半开连接（插件进程死了但 TCP 不断开时，
+- `src/bridge/socket.ts:826` — // figma-mcp-server 定制：供 broker 以 --fe-child=socket spawn 自身时路由调用
 - `src/tools/annotation.ts:179` — // figma-mcp-server 定制：无效 categoryId 在命令级整体拒批
 - `src/tools/channel.ts:48` — // figma-mcp-server 定制: CHANNEL_NOT_FOUND 条目已移除 —— 全仓库无任何产生点
 - `src/tools/channel.ts:224` — // figma-mcp-server 定制: status 增加 "failed" —— broker live 通道下 join 失败
@@ -53,3 +55,5 @@
 - `src/protocol/version.ts:1` — // figma-mcp-server 定制版（上游 readRootPackageMetadata 已删）：频道握手的 serverVersion 必须和
 - `plugin/handlers/prototypingHandlers.ts:189` — // figma-mcp-server 定制：Figma API 可能抛非 Error 值（undefined/字符串），必须安全序列化，否则错误链路断成 "undefined"
 - `plugin/handlers/stylingHandlers.ts:43` — // figma-mcp-server 定制：gradient 计入模式计数，否则 gradient-only 会在此被误拦（gradient 分支变死代码）
+- `plugin/src/main.ts:335` — // figma-mcp-server 定制：插件侧执行计时，随 result 回传，供 broker 审计行做耗时分解
+- `plugin/src/main.ts:337` — // figma-mcp-server 定制：单命令超时——Figma API 偶发永不返回（如网络中断时），
