@@ -4588,8 +4588,23 @@ Nothing was deleted. Read each listed consumer's current state with node_info (n
       throw new Error(`Failed to get reactions: ${detail}`);
     }
   }
+  async function findTopLevelFrame(node) {
+    let curr = node;
+    while (curr.parent && curr.parent.type !== "PAGE" && curr.parent.type !== "SECTION") {
+      curr = curr.parent;
+    }
+    return curr;
+  }
+  function pageOf(node) {
+    let curr = node;
+    while (curr) {
+      if (curr.type === "PAGE") return curr;
+      curr = curr.parent;
+    }
+    return null;
+  }
   async function updateReactions(params) {
-    var _a;
+    var _a, _b;
     const { nodeId, reactions } = params || {};
     if (!nodeId) {
       throw new Error("Missing nodeId parameter");
@@ -4599,17 +4614,41 @@ Nothing was deleted. Read each listed consumer's current state with node_info (n
     }
     const node = await figma.getNodeByIdAsync(nodeId);
     if (!node) {
-      throw new Error(`Node not found with ID: ${nodeId}`);
+      throw new Error(`[\u6E90\u8282\u70B9\u4E0D\u5B58\u5728] nodeId=${nodeId}\uFF1A\u5148\u7528 node_info \u6838\u5BF9\uFF0Cid \u4F1A\u968F\u589E\u5220\u53D8\u5316`);
     }
     if (!("reactions" in node)) {
-      throw new Error(`Node with ID ${nodeId} does not support reactions`);
+      throw new Error(`[\u6E90\u8282\u70B9\u7C7B\u578B\u4E0D\u652F\u6301] ${node.name} (${node.type}) \u4E0D\u80FD\u6302\u4EA4\u4E92\uFF0Creactions \u4EC5\u652F\u6301 FRAME/COMPONENT/INSTANCE \u7B49\u8282\u70B9`);
+    }
+    const sourceTop = await findTopLevelFrame(node);
+    for (const reaction of reactions) {
+      const actions = (_a = reaction == null ? void 0 : reaction.actions) != null ? _a : (reaction == null ? void 0 : reaction.action) ? [reaction.action] : [];
+      for (const action of actions) {
+        if ((action == null ? void 0 : action.type) !== "NODE" || !action.destinationId) continue;
+        const dest = await figma.getNodeByIdAsync(action.destinationId);
+        if (!dest) {
+          throw new Error(`[\u76EE\u6807\u4E0D\u5B58\u5728] destinationId=${action.destinationId}\uFF1A\u8BE5\u8282\u70B9\u5DF2\u88AB\u5220\u9664\u6216 id \u5DF2\u53D8\u5316\uFF0C\u5148 node_info \u91CD\u67E5`);
+        }
+        const destTop = await findTopLevelFrame(dest);
+        if (destTop.id === sourceTop.id) {
+          throw new Error(`[\u76EE\u6807\u662F\u6E90\u8282\u70B9\u81EA\u8EAB] ${dest.name}\uFF1ANAVIGATE \u7EC8\u70B9\u5FC5\u987B\u4E0E\u8D77\u70B9\u5C4F\u4E0D\u540C`);
+        }
+        const destPage = pageOf(destTop);
+        const sourcePage = pageOf(sourceTop);
+        if (destPage && sourcePage && destPage.id !== sourcePage.id) {
+          throw new Error(`[\u8DE8\u9875\u8DF3\u8F6C] \u76EE\u6807\u5728\u300C${destPage.name}\u300D\uFF0C\u6E90\u5728\u300C${sourcePage.name}\u300D\uFF1ANAVIGATE \u53EA\u652F\u6301\u540C\u9875`);
+        }
+        if (destTop.id !== dest.id && destTop.type !== "SECTION") {
+          throw new Error(`[\u76EE\u6807\u4E0D\u662F\u9876\u5C42\u5E27] ${dest.name} \u7684\u9876\u5C42\u5BB9\u5668\u662F ${destTop.name}(${destTop.type})\u3002Figma \u8981\u6C42 NAVIGATE \u7EC8\u70B9\u4E3A PAGE \u76F4\u63A5\u5B50\u5E27\uFF1B\u82E5\u9876\u5C42\u5BB9\u5668\u662F FRAME\uFF0C\u8BF7\u628A\u5B83\u8F6C\u4E3A SECTION\uFF08\u5206\u533A\uFF09\u6216\u79FB\u51FA\u5230\u9875\u9762\u9876\u5C42`);
+        }
+      }
     }
     try {
       await node.setReactionsAsync(reactions);
       return { success: true, message: `Successfully updated reactions for node ${nodeId}` };
     } catch (e) {
-      const detail = e instanceof Error ? (_a = e.stack) != null ? _a : e.message : e === void 0 ? "undefined (Figma API \u672A\u7ED9\u51FA\u539F\u56E0)" : String(e);
-      throw new Error(`Failed to update reactions: ${detail}`);
+      const detail = e instanceof Error ? (_b = e.stack) != null ? _b : e.message : e === void 0 ? "undefined (Figma API \u672A\u7ED9\u51FA\u539F\u56E0)" : String(e);
+      const clarified = /Unable to establish connection to Figma/i.test(detail) ? `${detail}\uFF08\u6CE8\uFF1A\u6B64\u9519\u8BEF\u662F Figma \u684C\u9762\u7AEF\u5185\u90E8\u8FDE\u63A5\u4E2D\u65AD\uFF0C\u975E\u5916\u7F51\u95EE\u9898\u2014\u2014\u901A\u5E38\u662F\u63D2\u4EF6 WS \u65AD\u5F00\u6216 Figma \u8FDB\u7A0B\u5047\u6B7B\uFF0C\u91CD\u5F00\u63D2\u4EF6\u5373\u53EF\uFF09` : detail;
+      throw new Error(`Failed to update reactions: ${clarified}`);
     }
   }
 

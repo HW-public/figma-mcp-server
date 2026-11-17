@@ -2,7 +2,7 @@
 
 扫描标记：`figma-mcp-server 定制` ｜ 范围：`src/bridge、src/tools、src/protocol、plugin` ｜ 由 `scripts/list-customizations.mjs` 生成
 
-共 53 处：
+共 56 处：
 
 - `src/bridge/server.ts:68` — // figma-mcp-server 定制：供 broker 以 --fe-child=server spawn 自身时路由调用
 - `src/bridge/socket.ts:40` — /** figma-mcp-server 定制：心跳漏计（半开连接检测） */
@@ -53,7 +53,10 @@
 - `src/tools/variable.ts:282` — // figma-mcp-server 定制：handler 返回 deleted/deletedCollection，无 message
 - `src/protocol/errorCodes.ts:133` — // figma-mcp-server 定制：CHANNEL_NOT_FOUND 为死码——socket 层拒连已改用 PLUGIN_PEER_UNAVAILABLE，全仓库无产生点，保留定义仅作 ratified 契约存档
 - `src/protocol/version.ts:1` — // figma-mcp-server 定制版（上游 readRootPackageMetadata 已删）：频道握手的 serverVersion 必须和
-- `plugin/handlers/prototypingHandlers.ts:189` — // figma-mcp-server 定制：Figma API 可能抛非 Error 值（undefined/字符串），必须安全序列化，否则错误链路断成 "undefined"
+- `plugin/handlers/prototypingHandlers.ts:165` — // figma-mcp-server 定制：向上找"屏"——parent 为 PAGE 或 SECTION 即顶层（Figma 导航目标规则）
+- `plugin/handlers/prototypingHandlers.ts:203` — // figma-mcp-server 定制：NAVIGATE 目标预校验——Figma API 的错误把"目标不存在/非顶层/跨页"混成一句，
+- `plugin/handlers/prototypingHandlers.ts:233` — // figma-mcp-server 定制：Figma API 可能抛非 Error 值（undefined/字符串），必须安全序列化，否则错误链路断成 "undefined"
+- `plugin/handlers/prototypingHandlers.ts:235` — // figma-mcp-server 定制：Figma 内部超时的文案说"check your internet"有误导——实际是插件↔Figma 桌面端连接问题
 - `plugin/handlers/stylingHandlers.ts:43` — // figma-mcp-server 定制：gradient 计入模式计数，否则 gradient-only 会在此被误拦（gradient 分支变死代码）
 - `plugin/src/main.ts:335` — // figma-mcp-server 定制：插件侧执行计时，随 result 回传，供 broker 审计行做耗时分解
 - `plugin/src/main.ts:337` — // figma-mcp-server 定制：单命令超时——Figma API 偶发永不返回（如网络中断时），
