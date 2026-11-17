@@ -7701,18 +7701,27 @@ Processing annotation ${i + 1}/${annotations.length}:`,
         break;
       case "execute-command":
         state.commandQueue = (state.commandQueue || Promise.resolve()).then(async () => {
+          const startedAt = Date.now();
           try {
             const result = await handleCommand(msg.command, msg.params);
+            const sanitized = sanitizeForPostMessage(result);
+            if (sanitized && typeof sanitized === "object" && !Array.isArray(sanitized)) {
+              sanitized.durationMs = Date.now() - startedAt;
+            }
             figma.ui.postMessage({
               type: "command-result",
               id: msg.id,
-              result: sanitizeForPostMessage(result)
+              result: sanitized
             });
           } catch (error) {
+            const structured = getStructuredError(error);
+            if (structured && typeof structured === "object") {
+              structured.durationMs = Date.now() - startedAt;
+            }
             figma.ui.postMessage({
               type: "command-error",
               id: msg.id,
-              error: getStructuredError(error)
+              error: structured
             });
           }
         });

@@ -332,22 +332,32 @@ figma.ui.onmessage = async (msg: any) => {
             // Execute commands received from UI (which gets them from WebSocket)
             // Use a promise chain (queue) to serialize execution and prevent race conditions
             state.commandQueue = (state.commandQueue || Promise.resolve()).then(async () => {
+                // figma-mcp-server 定制：插件侧执行计时，随 result 回传，供 broker 审计行做耗时分解
+                const startedAt = Date.now();
                 try {
                     const result = await handleCommand(msg.command, msg.params);
                     // Send result back to UI. Sanitize first: any field that is
                     // figma.mixed (a Symbol) — or any other non-cloneable — would
                     // otherwise throw "Cannot unwrap symbol" on postMessage and
                     // fail a command whose mutation already succeeded.
+                    const sanitized = sanitizeForPostMessage(result);
+                    if (sanitized && typeof sanitized === "object" && !Array.isArray(sanitized)) {
+                        (sanitized as Record<string, unknown>).durationMs = Date.now() - startedAt;
+                    }
                     figma.ui.postMessage({
                         type: "command-result",
                         id: msg.id,
-                        result: sanitizeForPostMessage(result),
+                        result: sanitized,
                     });
                 } catch (error: any) {
+                    const structured = getStructuredError(error);
+                    if (structured && typeof structured === "object") {
+                        (structured as Record<string, unknown>).durationMs = Date.now() - startedAt;
+                    }
                     figma.ui.postMessage({
                         type: "command-error",
                         id: msg.id,
-                        error: getStructuredError(error),
+                        error: structured,
                     });
                 }
             });

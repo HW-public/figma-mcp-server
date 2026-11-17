@@ -452,7 +452,13 @@ class Broker {
             }
             // join 失败时 result.status==='failed'（无 isError），审计不能记 ok
             const joinFailed = (result as { status?: string })?.status === 'failed';
-            if (this.config.auditLog && !joinFailed) log(this.config, `[ok] ${name} ${Date.now() - startedAt}ms`);
+            if (this.config.auditLog && !joinFailed) {
+                // figma-mcp-server 定制：耗时分解——插件侧计时随 structuredContent.durationMs 回传
+                const total = Date.now() - startedAt;
+                const pluginMs = (result as { structuredContent?: { durationMs?: number } })?.structuredContent?.durationMs;
+                const breakdown = typeof pluginMs === 'number' ? ` (plugin ${pluginMs}ms | 链路 ${Math.max(total - pluginMs, 0)}ms)` : '';
+                log(this.config, `[ok] ${name} ${total}ms${breakdown}`);
+            }
             return result;
         } catch (e) {
             const message = this.translateError((e as Error).message);
