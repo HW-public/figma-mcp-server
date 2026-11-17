@@ -37,6 +37,8 @@ interface ConnectedPeer {
   channel: string | null;
   pluginVersion?: string;
   serverVersion?: string;
+  /** figma-mcp-server 定制：心跳漏计（半开连接检测） */
+  missedPongs?: number;
 }
 
 interface PendingRoute {
@@ -105,6 +107,25 @@ export function createFigmaSocketServer(
   };
   const channels = new Map<string, ChannelState>();
   const peers = new Map<WebSocket, ConnectedPeer>();
+
+  // figma-mcp-server 定制：WS 心跳——检测半开连接（插件进程死了但 TCP 不断开时，
+  // 不清掉会让路由在死连接上空等到 idle 回收，期间所有调用假死）。
+  // 5s 一发 ping，连续 2 次没 pong（>10s）判死 → terminate 触发 close 事件走正常清理。
+  const HEARTBEAT_INTERVAL_MS = 5000;
+  const HEARTBEAT_MAX_MISSES = 2;
+  const heartbeat = setInterval(() => {
+    for (const peer of peers.values()) {
+      if (peer.socket.readyState !== WebSocket.OPEN) continue;
+      peer.missedPongs = (peer.missedPongs ?? 0) + 1;
+      if (peer.missedPongs > HEARTBEAT_MAX_MISSES) {
+        logger.log(`Heartbeat lost for peer ${peer.peerId}, terminating half-open socket`);
+        try { peer.socket.terminate(); } catch { /* ignore */ }
+        continue;
+      }
+      try { peer.socket.ping(); } catch { /* ignore */ }
+    }
+  }, HEARTBEAT_INTERVAL_MS);
+  heartbeat.unref?.();
 
   const deletePendingRoute = (
     channel: ChannelState,
@@ -727,9 +748,14 @@ export function createFigmaSocketServer(
       leavePeer(peer, true);
       peers.delete(socket);
     });
+
+    socket.on("pong", () => {
+      peer.missedPongs = 0;
+    });
   });
 
   const close = async () => {
+    clearInterval(heartbeat);
     for (const channel of channels.values()) clearPendingRoutes(channel);
     for (const client of webSocketServer.clients) client.terminate();
 

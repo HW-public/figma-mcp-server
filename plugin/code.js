@@ -7702,8 +7702,14 @@ Processing annotation ${i + 1}/${annotations.length}:`,
       case "execute-command":
         state.commandQueue = (state.commandQueue || Promise.resolve()).then(async () => {
           const startedAt = Date.now();
+          const COMMAND_TIMEOUT_MS = 12e4;
           try {
-            const result = await handleCommand(msg.command, msg.params);
+            const result = await Promise.race([
+              handleCommand(msg.command, msg.params),
+              new Promise((_, reject) => {
+                setTimeout(() => reject(new Error(`Command '${msg.command}' timed out after ${COMMAND_TIMEOUT_MS / 1e3}s in plugin (Figma API \u672A\u8FD4\u56DE\uFF0C\u961F\u5217\u5DF2\u653E\u884C)`)), COMMAND_TIMEOUT_MS);
+              })
+            ]);
             const sanitized = sanitizeForPostMessage(result);
             if (sanitized && typeof sanitized === "object" && !Array.isArray(sanitized)) {
               sanitized.durationMs = Date.now() - startedAt;

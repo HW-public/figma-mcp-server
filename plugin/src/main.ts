@@ -334,8 +334,16 @@ figma.ui.onmessage = async (msg: any) => {
             state.commandQueue = (state.commandQueue || Promise.resolve()).then(async () => {
                 // figma-mcp-server 定制：插件侧执行计时，随 result 回传，供 broker 审计行做耗时分解
                 const startedAt = Date.now();
+                // figma-mcp-server 定制：单命令超时——Figma API 偶发永不返回（如网络中断时），
+                // 一条挂死命令会毒化整个串行队列（后续全部排队假死）。超时后报错并放行的。
+                const COMMAND_TIMEOUT_MS = 120000;
                 try {
-                    const result = await handleCommand(msg.command, msg.params);
+                    const result = await Promise.race([
+                        handleCommand(msg.command, msg.params),
+                        new Promise((_, reject) => {
+                            setTimeout(() => reject(new Error(`Command '${msg.command}' timed out after ${COMMAND_TIMEOUT_MS / 1000}s in plugin (Figma API 未返回，队列已放行)`)), COMMAND_TIMEOUT_MS);
+                        }),
+                    ]);
                     // Send result back to UI. Sanitize first: any field that is
                     // figma.mixed (a Symbol) — or any other non-cloneable — would
                     // otherwise throw "Cannot unwrap symbol" on postMessage and
