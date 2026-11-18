@@ -150,6 +150,8 @@ const TRANSLATE_CODE_DICT: Record<string, string> = {
     MISSING_CHANNEL: '[中文] 缺少频道名：请传插件状态栏显示的 4 位频道码',
     CHANNEL_JOIN_FAILED: '[中文] 加入频道失败：插件未在预期时间内确认，重连插件后重试',
     PLUGIN_DISCONNECTED: '[中文] 插件已断开：可编辑范围尚未读取完成插件就断了，重新打开插件再试',
+    // figma-mcp-server 定制：多频道——args.channel 未加入 / 无 channel 且本会话无绑定无默认时给出
+    CHANNEL_NOT_JOINED: '[中文] 频道未加入或未指定：该频道码不在已加入列表，或调用未带 channel 且本会话无绑定频道、无默认频道；用 channel_list 查看已加入频道与文档名，channel_join 加入，channel_use 绑定本会话',
     // —— 页面/文档操作（PAGE_LOAD_FAILED 族）——
     PAGE_LOAD_FAILED: '[中文] 页面加载失败：请重试；持续失败则重新打开插件',
     PAGE_SCAN_FAILED: '[中文] 页面读取失败：页面已加载但读取中断，重试或缩小读取范围',
@@ -211,7 +213,8 @@ interface QueueEntry {
 
 class Broker {
     private token: string;
-    private clients = new Map<number, Socket>();
+    // figma-mcp-server 定制：多频道——clients 值带本会话绑定的频道（channel_use 设置，断开即清）
+    private clients = new Map<number, { socket: Socket; boundChannel: string | null }>();
     private nextClientId = 1;
     private socketProc: ChildProcess | null = null;
     private mcpClient: Client | null = null;
@@ -219,9 +222,17 @@ class Broker {
     private bridgeState: 'connected' | 'disconnected' = 'disconnected';
     private shuttingDown = false;
     private socketRespawnTimer: NodeJS.Timeout | null = null;
+    /** 默认频道：不带 channel 且本会话无绑定时的路由目标（"切默认"的 join 会更新它） */
     private currentChannel: string | null = null;
-    private queue: QueueEntry[] = [];
-    private draining = false;
+    // figma-mcp-server 定制：多频道——已加入频道池 + 频道码→文档名映射（join ack 捕获，拿不到为 null）
+    private joinedChannels = new Set<string>();
+    private documentNames = new Map<string, string | null>();
+    // figma-mcp-server 定制：每频道独立 FIFO——跨频道天然并行（写 A 不堵读 B），
+    // 频道内保持串行（同一 Figma 文档操作顺序保证）；批处理走独立互斥锁
+    private channelQueues = new Map<string, QueueEntry[]>();
+    private channelDraining = new Set<string>();
+    private batchRunning = false;
+    private batchChain: Promise<unknown> = Promise.resolve();
     // figma-mcp-server 定制: 风暴读缓存（TTL 见 config.readOnlyCacheTtlMs，≤0 完全禁用；
     // 键=tool+规范化args，值=深拷贝结果+timestamp；任何写工具成功即整表清空）
     private readCache = new Map<string, { value: unknown; timestamp: number }>();
@@ -405,17 +416,45 @@ class Broker {
         return null;
     }
 
-    private async joinChannel(channel: string): Promise<boolean> {
+    // figma-mcp-server 定制: broker 本地工具（不进子进程，多频道会话管理）——
+    // 与 childTools 合并广播给瘦客户端
+    private readonly brokerToolDefs: Array<{ name: string; description: string; inputSchema: unknown }> = [
+        {
+            name: 'channel_list',
+            description: '列出本 broker 已加入的全部频道、频道码→文档名映射、默认频道与本会话绑定频道（多频道路由依据；本会话不带 channel 的调用路由到绑定频道，未绑定则默认频道）。',
+            inputSchema: { type: 'object', properties: {} },
+        },
+        {
+            name: 'channel_use',
+            description: '把本会话绑定到已加入的频道（须先 channel_join 加入该频道）：绑定后本会话所有不带 channel 的工具调用都路由到该频道；重复调用即切换。多会话各自绑定，互不串频道。',
+            inputSchema: {
+                type: 'object',
+                properties: { channel: { type: 'string', description: '已加入的频道码' } },
+                required: ['channel'],
+            },
+        },
+    ];
+
+    private async joinChannel(channel: string, opts: { persist?: boolean } = {}): Promise<boolean> {
         if (!this.mcpClient) return false;
         this.lastJoinError = null;
         try {
-            const result = await this.mcpClient.callTool({ name: 'channel_join', arguments: { channel } });
+            // figma-mcp-server 定制: 多频道——additive 让子进程保留既有绑定仅追加，
+            // 池化加入不释放其他频道；"切默认"与否只影响本进程的默认频道与持久化
+            const result = await this.mcpClient.callTool({ name: 'channel_join', arguments: { channel, additive: true } });
             const failure = this.extractJoinFailure(result);
             if (!(result as { isError?: boolean }).isError && !failure) {
                 this.lastJoinPayload = result;
-                this.currentChannel = channel;
-                persistChannel(this.config.channelFile, channel);
-                log(this.config, `频道 '${channel}' 已加入`);
+                this.joinedChannels.add(channel);
+                // figma-mcp-server 定制: 从 join payload 捕获文档名（插件 get_connect_payload 上报）；
+                // 拿不到记 null，channel_list/join 返回值里注明
+                const env = (result as { structuredContent?: Record<string, unknown> } | null)?.structuredContent;
+                this.documentNames.set(channel, typeof env?.documentName === 'string' ? env.documentName : null);
+                if (opts.persist !== false) {
+                    this.currentChannel = channel;
+                    persistChannel(this.config.channelFile, channel);
+                }
+                log(this.config, `频道 '${channel}' 已加入（池 ${this.joinedChannels.size} 个${opts.persist === false ? '，keepDefault' : ''}）`);
                 return true;
             }
             // figma-mcp-server 定制: 透传子进程返回的 error 信封（code/message），不再吞掉错误详情
@@ -428,42 +467,140 @@ class Broker {
         return false;
     }
 
-    /** FIFO 互斥队列：所有工具调用串行执行，保证画布操作顺序一致性 */
-    private enqueue<T>(owner: number, run: () => Promise<T>): Promise<T> {
+    /** figma-mcp-server 定制: 每频道独立 FIFO——同一频道的调用串行（画布顺序），跨频道并行 */
+    private enqueue<T>(channel: string, owner: number, run: () => Promise<T>): Promise<T> {
         this.lastEmptyAt = Date.now();
         return new Promise<T>((resolve, reject) => {
-            this.queue.push({
+            let q = this.channelQueues.get(channel);
+            if (!q) {
+                q = [];
+                this.channelQueues.set(channel, q);
+            }
+            q.push({
                 owner,
                 enqueuedAt: Date.now(),
                 run: run as () => Promise<unknown>,
                 resolve: resolve as (v: unknown) => void,
                 reject,
             });
-            // figma-mcp-server 定制: 拥塞可见——队列积压超过 8 个调用即告警
-            if (this.queue.length > 8) {
-                log(this.config, `[拥堵] 队列积压 ${this.queue.length} 个调用`);
+            // figma-mcp-server 定制: 拥塞可见——单频道队列积压超过 8 个调用即告警（按频道独立计算）
+            if (q.length > 8) {
+                log(this.config, `[拥堵] 频道 '${channel}' 队列积压 ${q.length} 个调用`);
             }
-            void this.drain();
+            void this.drain(channel);
         });
     }
 
-    private async drain(): Promise<void> {
-        if (this.draining) return;
-        this.draining = true;
-        while (this.queue.length > 0) {
-            const entry = this.queue.shift()!;
-            // figma-mcp-server 定制: 拥塞可见——排队超 15s 的调用出队时记一行等待时长
-            const waitMs = Date.now() - entry.enqueuedAt;
-            if (waitMs > 15000) {
-                log(this.config, `[拥堵] 调用排队等待 ${(waitMs / 1000).toFixed(1)}s，队列长度 ${this.queue.length}`);
+    private async drain(channel: string): Promise<void> {
+        if (this.channelDraining.has(channel)) return;
+        this.channelDraining.add(channel);
+        try {
+            for (;;) {
+                // figma-mcp-server 定制: 批处理全局互斥——执行期间暂停所有频道排空，批完统一恢复
+                if (this.batchRunning) return;
+                const q = this.channelQueues.get(channel);
+                const entry = q && q.length > 0 ? q.shift()! : undefined;
+                if (!entry) return;
+                // figma-mcp-server 定制: 拥塞可见——排队超 15s 的调用出队时记一行等待时长
+                const waitMs = Date.now() - entry.enqueuedAt;
+                if (waitMs > 15000) {
+                    log(this.config, `[拥堵] 频道 '${channel}' 调用排队等待 ${(waitMs / 1000).toFixed(1)}s，队列长度 ${q?.length ?? 0}`);
+                }
+                try {
+                    entry.resolve(await entry.run());
+                } catch (e) {
+                    entry.reject(e as Error);
+                }
             }
-            try {
-                entry.resolve(await entry.run());
-            } catch (e) {
-                entry.reject(e as Error);
-            }
+        } finally {
+            this.channelDraining.delete(channel);
         }
-        this.draining = false;
+    }
+
+    /** figma-mcp-server 定制: 批处理独立互斥锁——批内 @opN 跨 op 引用要求全局串行；
+     *  执行期间暂停所有频道队列排空，批完恢复全部频道排空 */
+    private runBatchExclusive<T>(run: () => Promise<T>): Promise<T> {
+        const p = this.batchChain.then(async () => {
+            this.batchRunning = true;
+            try {
+                return await run();
+            } finally {
+                this.batchRunning = false;
+                for (const ch of [...this.channelQueues.keys()]) {
+                    void this.drain(ch);
+                }
+            }
+        });
+        this.batchChain = p.catch(() => { /* 互斥链不受上次批失败影响 */ });
+        return p;
+    }
+
+    // figma-mcp-server 定制: 频道路由解析——args.channel > 会话绑定 > 默认频道；
+    // 写工具（以及读工具）解析不到任何频道即抛结构化错误（列出可用频道）
+    private resolveChannel(name: string, args: Record<string, unknown>, clientId: number): string {
+        const explicit = typeof (args as { channel?: unknown }).channel === 'string'
+            ? (args as { channel: string }).channel.trim()
+            : '';
+        if (explicit) {
+            if (!this.joinedChannels.has(explicit)) {
+                throw new Error(JSON.stringify({
+                    errorCode: 'CHANNEL_NOT_JOINED',
+                    errorMessage: `频道 '${explicit}' 未加入。已加入频道: ${[...this.joinedChannels].join(', ') || '无'}。请先用 channel_join 加入该频道（可用 channel_list 查看全部频道与文档名）。`,
+                }));
+            }
+            return explicit;
+        }
+        const bound = this.clients.get(clientId)?.boundChannel;
+        if (bound) return bound;
+        if (this.currentChannel) return this.currentChannel;
+        const pool = [...this.joinedChannels];
+        if (pool.length > 0) {
+            throw new Error(JSON.stringify({
+                errorCode: 'CHANNEL_NOT_JOINED',
+                errorMessage: `调用未指定 channel，且本会话无绑定频道、无默认频道。可用频道: ${pool.join(', ')}。请带 channel 参数，或先 channel_use 绑定本会话频道。`,
+            }));
+        }
+        throw new Error(JSON.stringify({
+            errorCode: 'CHANNEL_NOT_BOUND',
+            errorMessage: '未加入任何频道：请先调用 channel_join 加入插件状态栏显示的 4 位频道码。',
+        }));
+    }
+
+    // figma-mcp-server 定制: 频道池快照（channel_list / channel_join / channel_use 共用）
+    private channelPoolSnapshot(clientId: number): Record<string, unknown> {
+        return {
+            joinedChannels: [...this.joinedChannels],
+            documents: Object.fromEntries(this.documentNames),
+            defaultChannel: this.currentChannel,
+            boundChannel: this.clients.get(clientId)?.boundChannel ?? null,
+        };
+    }
+
+    // figma-mcp-server 定制: channel_use——按 clientId 绑定本会话频道（须已 join；重复调用即切换）
+    private applyChannelUse(clientId: number, args: Record<string, unknown>): Record<string, unknown> {
+        const channel = typeof (args as { channel?: unknown }).channel === 'string'
+            ? (args as { channel: string }).channel.trim()
+            : '';
+        if (!channel) {
+            throw new Error(JSON.stringify({
+                errorCode: 'MISSING_CHANNEL',
+                errorMessage: 'channel_use 需要 channel 参数（已加入的频道码）。',
+            }));
+        }
+        if (!this.joinedChannels.has(channel)) {
+            throw new Error(JSON.stringify({
+                errorCode: 'CHANNEL_NOT_JOINED',
+                errorMessage: `频道 '${channel}' 未加入，无法绑定本会话。已加入频道: ${[...this.joinedChannels].join(', ') || '无'}。请先用 channel_join 加入。`,
+            }));
+        }
+        const client = this.clients.get(clientId);
+        if (client) client.boundChannel = channel;
+        return {
+            status: 'success',
+            channel,
+            documentName: this.documentNames.get(channel) ?? null,
+            boundChannel: channel,
+        };
     }
 
     /** image.filePath → 读取本地文件转 bytesBase64（插件无法访问 localhost/本地文件，由 broker 代劳）。
@@ -564,14 +701,15 @@ class Broker {
         return result;
     }
 
-    private async execToolWrapped(name: string, args: Record<string, unknown>): Promise<unknown> {
+    private async execToolWrapped(name: string, args: Record<string, unknown>, clientId: number, channel: string): Promise<unknown> {
         // figma-mcp-server 定制: 工具调用审计（FIGMA_MCP_AUDIT_LOG=off 全关，默认开），出入口各一行
         const startedAt = Date.now();
-        if (this.config.auditLog) log(this.config, `[call] ${name} ${summarizeForAudit(args)}`);
+        if (this.config.auditLog) log(this.config, `[call] ${name} ch=${channel} ${summarizeForAudit(args)}`);
         // figma-mcp-server 定制: 风暴读缓存——只读工具先查缓存，命中直接返回深拷贝（防调用方串改缓存）
         const isReadOnly = READ_ONLY_TOOLS.has(name);
         const ttl = this.config.readOnlyCacheTtlMs;
-        const cacheKey = isReadOnly && ttl > 0 ? `${name}|${stableStringify(args)}` : null;
+        // figma-mcp-server 定制: 多频道——缓存键带频道，跨频道同名调用不互染
+        const cacheKey = isReadOnly && ttl > 0 ? `${name}|${channel}|${stableStringify(args)}` : null;
         if (cacheKey) {
             const hit = this.readCache.get(cacheKey);
             if (hit) {
@@ -587,7 +725,7 @@ class Broker {
             }
         }
         try {
-            const result = await this.execTool(name, args);
+            const result = await this.execTool(name, args, clientId, channel);
             if ((result as { isError?: boolean }).isError) {
                 // figma-mcp-server 定制: SDK 的 isError 结果提取 content 文本走与 catch 分支相同的
                 // translateError 处理，保持 isError 语义返回给瘦客户端（result 对象自带 isError 字段，
@@ -631,32 +769,54 @@ class Broker {
         }
     }
 
-    private async execTool(name: string, args: Record<string, unknown>): Promise<unknown> {
+    private async execTool(name: string, args: Record<string, unknown>, clientId: number, channel: string): Promise<unknown> {
         if (!this.mcpClient) throw new Error('LIVE_NOT_CONNECTED: figma-edit-mcp 子进程未连接');
         args = await this.materializeImageArgs(args);
         if (name === 'channel_join') {
-            const channel = (args as { channel?: string }).channel;
-            if (!channel) throw new Error('channel_join 需要 channel 参数');
-            const ok = await this.joinChannel(channel);
+            const joinArgs = args as { channel?: string; keepDefault?: unknown };
+            const target = typeof joinArgs.channel === 'string' ? joinArgs.channel.trim() : '';
+            if (!target) throw new Error('channel_join 需要 channel 参数');
+            // figma-mcp-server 定制: 多频道——keepDefault=true 只进池不改默认频道、不持久化；
+            // 缺省保持旧直觉：join 即切默认频道并持久化到 channel.json
+            const keepDefault = joinArgs.keepDefault === true;
+            const ok = await this.joinChannel(target, { persist: !keepDefault });
             // figma-mcp-server 定制: 失败时返回真实错误信封（errorCode/errorMessage），
             // 不再把 lastJoinPayload（上次成功的旧 pages/node 数据）套上一层 status:'failed' 返回
             if (!ok) {
                 const err = this.lastJoinError ?? {};
                 return {
                     status: 'failed',
-                    channel,
+                    channel: target,
                     ...(err.errorCode ? { errorCode: err.errorCode } : {}),
                     ...(err.errorMessage ? { errorMessage: err.errorMessage } : {}),
                 };
             }
             const payload = (this.lastJoinPayload ?? {}) as Record<string, unknown>;
-            return { ...payload, status: 'success', channel };
+            // figma-mcp-server 定制: 多频道——成功返回带上频道池快照（已加入列表 + 频道码→文档名映射），
+            // content 文本与 structuredContent 同步改写，AI 两处都能看到
+            const childEnv = (payload as { structuredContent?: Record<string, unknown> }).structuredContent ?? {};
+            const pool = {
+                ...childEnv,
+                ...this.channelPoolSnapshot(clientId),
+                joinedChannel: target,
+                documentName: this.documentNames.get(target) ?? null,
+                status: 'success',
+                channel: target,
+            };
+            const content = Array.isArray(payload.content)
+                ? (payload.content as Array<Record<string, unknown>>).map((c) =>
+                    c?.type === 'text' ? { ...c, text: JSON.stringify(pool) } : c)
+                : payload.content;
+            return { ...payload, content, structuredContent: pool, status: 'success', channel: target };
         }
-        let result = await this.mcpClient.callTool({ name, arguments: args });
-        // 频道未绑定时自动重 join（用持久化码）并重试一次
+        // figma-mcp-server 定制: 多频道——把解析出的目标频道注入子进程调用
+        // （子进程按帧 channel 路由到对应插件窗口；子进程 schema 统一放行 channel 字段）
+        const childArgs = { ...args, channel };
+        let result = await this.mcpClient.callTool({ name, arguments: childArgs });
+        // 频道未绑定时自动重 join（用本次调用的目标频道）并重试一次
         if ((result as { isError?: boolean }).isError && JSON.stringify(result).includes('CHANNEL_NOT_BOUND')) {
-            if (this.config.channel && await this.joinChannel(this.config.channel)) {
-                result = await this.mcpClient.callTool({ name, arguments: args });
+            if (await this.joinChannel(channel, { persist: false })) {
+                result = await this.mcpClient.callTool({ name, arguments: childArgs });
             }
         }
         // figma-mcp-server 定制: node_export_visual + args.filePath → base64 图像落盘，
@@ -780,6 +940,7 @@ class Broker {
         ops: Array<{ name: string; args?: Record<string, unknown>; clientRef?: string }>,
         abortOnError: boolean,
         verbose: boolean,
+        clientId: number,
     ): Promise<unknown> {
         const MAX_OPS = 200;
         const trimmed = ops.slice(0, MAX_OPS);
@@ -801,9 +962,22 @@ class Broker {
         const startedAt = Date.now();
         for (let i = 0; i < trimmed.length; i++) {
             const op = trimmed[i];
+            // figma-mcp-server 定制: 多频道——批内每个 op 独立解析路由频道
+            // （op.args.channel > 会话绑定 > 默认频道），解析失败按失败项汇总
+            let opChannel: string;
+            try {
+                opChannel = this.resolveChannel(op.name, op.args ?? {}, clientId);
+            } catch (e) {
+                const message = this.translateError((e as Error).message).slice(0, 200);
+                const code = extractErrorCode(message);
+                failures.push({ index: i, name: op.name, args: op.args ?? {}, ...(code ? { code } : {}), message });
+                results.push({ index: i, ok: false, error: `${code ? `${code}: ` : ''}${message}` });
+                if (abortOnError) break;
+                continue;
+            }
             try {
                 const resolvedArgs = this.resolveRefs(op.args ?? {}, rawByIndex, trimmed) as Record<string, unknown>;
-                const result = await this.execToolWrapped(op.name, resolvedArgs);
+                const result = await this.execToolWrapped(op.name, resolvedArgs, clientId, opChannel);
                 if ((result as { isError?: boolean }).isError) {
                     // figma-mcp-server 定制: isError 项计入 failed，failures 带 code/message 摘要（修 allOk 虚高）
                     const message = extractContentText(result).slice(0, 200);
@@ -868,8 +1042,13 @@ class Broker {
         socket.on('close', () => {
             if (clientId > 0) {
                 this.clients.delete(clientId);
-                // 清理该客户端未执行的队列项，避免死客户端卡队列
-                this.queue = this.queue.filter((q) => q.owner !== clientId);
+                // figma-mcp-server 定制: 多频道——清理该客户端未执行的队列项（所有频道队列），
+                // 避免死客户端卡队列；会话绑定随 clients 记录一并清除
+                for (const [ch, q] of this.channelQueues) {
+                    const kept = q.filter((entry) => entry.owner !== clientId);
+                    if (kept.length > 0) this.channelQueues.set(ch, kept);
+                    else this.channelQueues.delete(ch);
+                }
                 log(this.config, `客户端 #${clientId} 断开，剩余 ${this.clients.size} 个`);
                 if (this.clients.size === 0) this.lastEmptyAt = Date.now();
             }
@@ -893,7 +1072,7 @@ class Broker {
         if (!isAuthed()) {
             if (msg?.type === 'hello' && msg.token === this.token) {
                 const id = this.nextClientId++;
-                this.clients.set(id, socket);
+                this.clients.set(id, { socket, boundChannel: null });
                 setId(id);
                 setAuthed();
                 log(this.config, `客户端 #${id}（${String(msg.clientName ?? 'unknown')}）已认证`);
@@ -901,6 +1080,7 @@ class Broker {
                     type: 'welcome',
                     serverVersion: VERSION,
                     bridge: this.bridgeState,
+                    // figma-mcp-server 定制: 多频道——welcome 里的 channel 仍是默认频道语义
                     channel: this.currentChannel,
                 });
                 this.broadcastTools(); // 认证即推当前工具表（可能为空，桥就绪后还会再推）
@@ -913,17 +1093,50 @@ class Broker {
 
         switch (msg?.type) {
             case 'tools/list':
-                send({ type: 'tools', tools: this.childTools });
+                send({ type: 'tools', tools: [...this.childTools, ...this.brokerToolDefs] });
                 break;
             case 'tools/call': {
                 const callArgs = (msg.args ?? {}) as Record<string, unknown>;
-                this.enqueue(getId(), async () => {
+                const clientId = getId();
+                const toolName = String(msg.name);
+                // figma-mcp-server 定制: 多频道——broker 本地工具（channel_list/channel_use）
+                // 同步执行：纯内存操作且须立即可见（channel_use 之后的调用路由要马上生效）
+                if (toolName === 'channel_list' || toolName === 'channel_use') {
+                    const startedAt = Date.now();
+                    if (this.config.auditLog) log(this.config, `[call] ${toolName} ${summarizeForAudit(callArgs)}`);
+                    try {
+                        const result = toolName === 'channel_list'
+                            ? { status: 'success', ...this.channelPoolSnapshot(clientId) }
+                            : this.applyChannelUse(clientId, callArgs);
+                        if (this.config.auditLog) log(this.config, `[ok] ${toolName} ${Date.now() - startedAt}ms`);
+                        send({ type: 'result', id: msg.id, result });
+                    } catch (e) {
+                        const message = this.translateError((e as Error).message);
+                        if (this.config.auditLog) {
+                            log(this.config, `[fail] ${toolName} ${Date.now() - startedAt}ms ${extractErrorCode(message) ?? '-'}: ${message.slice(0, 150)}`);
+                        }
+                        send({ type: 'error', id: msg.id, message });
+                    }
+                    break;
+                }
+                // figma-mcp-server 定制: 多频道——入队前解析路由频道（冻结本次调用的路由）；
+                // channel_join 入目标频道队列（与该频道的在途操作串行），其余按解析结果
+                let channel: string;
+                try {
+                    channel = toolName === 'channel_join'
+                        ? (typeof callArgs.channel === 'string' && callArgs.channel.trim() ? callArgs.channel.trim() : '__control__')
+                        : this.resolveChannel(toolName, callArgs, clientId);
+                } catch (e) {
+                    send({ type: 'error', id: msg.id, message: this.translateError((e as Error).message) });
+                    break;
+                }
+                this.enqueue(channel, clientId, async () => {
                     const filter = (callArgs as { filter?: Record<string, string[]> }).filter;
-                    if (msg.name === 'node_info' && filter && (filter.property || filter['#property'])) {
-                        const result = await this.execToolWrapped(String(msg.name), callArgs) as Record<string, unknown>;
+                    if (toolName === 'node_info' && filter && (filter.property || filter['#property'])) {
+                        const result = await this.execToolWrapped(toolName, callArgs, clientId, channel) as Record<string, unknown>;
                         return this.pruneByPropertyFilter(result, filter);
                     }
-                    return this.execToolWrapped(String(msg.name), callArgs);
+                    return this.execToolWrapped(toolName, callArgs, clientId, channel);
                 }).then(
                     (result) => send({ type: 'result', id: msg.id, result }),
                     (e: Error) => send({ type: 'error', id: msg.id, message: e.message }),
@@ -931,27 +1144,34 @@ class Broker {
                 break;
             }
             case 'tools/batch':
-                this.enqueue(getId(), () =>
+                // figma-mcp-server 定制: 多频道——批处理走独立互斥锁：批内 @opN 引用要求全局串行，
+                // 执行期间暂停所有频道队列排空
+                this.runBatchExclusive(() =>
                     this.execBatch(
                         (msg.ops ?? []) as Array<{ name: string; args?: Record<string, unknown>; clientRef?: string }>,
                         Boolean(msg.abortOnError),
                         // figma-mcp-server 定制: 默认瘦身摘要，verbose 显式 true 才回全量结果
                         msg.verbose === true,
+                        getId(),
                     ),
                 ).then(
                     (result) => send({ type: 'batch-result', id: msg.id, ...(result as object) }),
                     (e: Error) => send({ type: 'error', id: msg.id, message: e.message }),
                 );
                 break;
-            case 'status':
+            case 'status': {
+                let queued = 0;
+                for (const q of this.channelQueues.values()) queued += q.length;
                 send({
                     type: 'status-report',
                     clients: this.clients.size,
                     bridge: this.bridgeState,
+                    // figma-mcp-server 定制: 多频道——status 里的 channel 仍是默认频道语义
                     channel: this.currentChannel,
-                    queued: this.queue.length,
+                    queued,
                 });
                 break;
+            }
             default:
                 send({ type: 'invalid', message: `unknown type: ${String(msg?.type)}` });
         }
@@ -959,9 +1179,9 @@ class Broker {
 
     /** 向全部已认证客户端推送当前 live 工具表（认证时 + 桥就绪/变化时） */
     private broadcastTools(): void {
-        const frame = encodeFrame({ type: 'tools', tools: this.childTools ?? [] });
-        for (const [, socket] of this.clients) {
-            if (!socket.destroyed) socket.write(frame);
+        const frame = encodeFrame({ type: 'tools', tools: [...this.childTools, ...this.brokerToolDefs] });
+        for (const [, client] of this.clients) {
+            if (!client.socket.destroyed) client.socket.write(frame);
         }
     }
 

@@ -230,7 +230,11 @@ export class LiveChannel {
     async callTool(name: string, args: Record<string, unknown>): Promise<unknown> {
         if (name === 'channel_join') {
             const channel = (args as { channel?: string }).channel;
-            if (channel) this.opts.onChannelPersist(channel);
+            // figma-mcp-server 定制: 多频道——keepDefault:true（只进池不切默认）不写持久化，
+            // 否则任意会话 join 新码都会篡改机器级默认频道
+            if (channel && (args as { keepDefault?: unknown }).keepDefault !== true) {
+                this.opts.onChannelPersist(channel);
+            }
         }
         return this.request({ type: 'tools/call', name, args });
     }

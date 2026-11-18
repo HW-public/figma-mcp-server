@@ -203,13 +203,10 @@ let wsUrl: string = 'ws://localhost:3055'; // Default
 let defaultPort: number = 3055;
 let nextBindingGeneration = 0;
 
-type ChannelBindingState =
-    // `releasedChannel` records a working binding this client gave up in order
-    // to attempt a join that then failed (Change 5, P9-F2). A connection owns
-    // at most one socket reservation, so the leave must happen first — but the
-    // caller must be told which channel that cost them, or a mistyped channel
-    // code silently destroys a live connection with no way back in one step.
-    | { status: "unbound"; releasedChannel?: string }
+// figma-mcp-server 定制：多频道——单连接可绑定多个频道（broker 多频道池）。
+// 每个频道独立的绑定状态与代次：代次在（重）join/失效时递增，过期代次的
+// 响应永远不会 resolve 新绑定下的调用（原单绑定 bindingState 的按频道版）。
+type ChannelBinding =
     | {
         status: "bound";
         channel: string;
@@ -225,7 +222,11 @@ type ChannelBindingState =
         requiresLeave: boolean;
     };
 
-let bindingState: ChannelBindingState = { status: "unbound" };
+const bindings = new Map<string, ChannelBinding>();
+/** 未显式指定频道时的路由目标（最近一次 join 的频道） */
+let primaryChannel: string | null = null;
+/** 最近一次被释放的健康绑定，供 CHANNEL_NOT_BOUND 错误提示恢复路径 */
+let lastReleasedChannel: string | undefined;
 
 const pendingRequests = new Map<string, {
     resolve: (value: unknown) => void;
@@ -233,29 +234,39 @@ const pendingRequests = new Map<string, {
     timeout: ReturnType<typeof setTimeout>;
     lastActivity: number;
     kind: "join" | "leave" | "command";
+    /** figma-mcp-server 定制：多频道——命令帧的目标频道（代次校验按频道独立） */
+    channel?: string;
     bindingGeneration?: number;
 }>();
 
-function rejectPendingForBinding(generation: number, error: FigmaError) {
+function rejectPendingForChannel(channel: string, generation: number, error: FigmaError) {
     for (const [id, request] of pendingRequests.entries()) {
-        if (request.bindingGeneration !== generation) continue;
+        if (request.kind !== "command" || request.channel !== channel || request.bindingGeneration !== generation) continue;
         clearTimeout(request.timeout);
         request.reject(error);
         pendingRequests.delete(id);
     }
 }
 
-function invalidateBoundChannel(error: FigmaError, requiresLeave: boolean) {
-    if (bindingState.status !== "bound") return;
-    const { channel, generation } = bindingState;
-    bindingState = {
+function rejectAllPending(error: FigmaError) {
+    for (const [id, request] of pendingRequests.entries()) {
+        clearTimeout(request.timeout);
+        request.reject(error);
+        pendingRequests.delete(id);
+    }
+}
+
+function invalidateBoundChannel(channel: string, error: FigmaError, requiresLeave: boolean) {
+    const binding = bindings.get(channel);
+    if (!binding || binding.status !== "bound") return;
+    bindings.set(channel, {
         status: "invalidated",
         channel,
-        generation,
+        generation: binding.generation,
         error,
         requiresLeave,
-    };
-    rejectPendingForBinding(generation, error);
+    });
+    rejectPendingForChannel(channel, binding.generation, error);
 }
 
 export function setFigmaServerUrl(url: string) {
@@ -310,12 +321,12 @@ export function connectToFigma(port: number = defaultPort) {
             // evidence. Invalidate the exact channel generation immediately so
             // later tool calls fail before a frame can be sent.
             if (json.type === "peer_disconnected") {
+                // figma-mcp-server 定制：多频道——只失效帧里点名的那个频道，其余绑定不受影响
                 if (
-                    bindingState.status === "bound"
-                    && typeof json.channel === "string"
-                    && json.channel === bindingState.channel
+                    typeof json.channel === "string" &&
+                    bindings.get(json.channel)?.status === "bound"
                 ) {
-                    invalidateBoundChannel(new FigmaError({
+                    invalidateBoundChannel(json.channel, new FigmaError({
                         code: typeof json.code === "string" ? json.code : "PLUGIN_DISCONNECTED",
                         message: typeof json.message === "string"
                             ? json.message
@@ -399,23 +410,25 @@ export function connectToFigma(port: number = defaultPort) {
                 // A response queued for an older binding must never resolve a
                 // command after reset/rejoin. The socket performs peer-bound
                 // routing too; this is the client-side generation backstop.
-                if (
-                    request.kind === "command"
-                    && (
-                        bindingState.status !== "bound"
-                        || request.bindingGeneration !== bindingState.generation
-                    )
-                ) {
-                    request.reject(
-                        bindingState.status === "invalidated"
-                            ? bindingState.error
-                            : new FigmaError({
-                                code: "PLUGIN_DISCONNECTED",
-                                message: "The channel binding changed before the command response arrived.",
-                            }),
-                    );
-                    pendingRequests.delete(myResponse.id);
-                    return;
+                // figma-mcp-server 定制：多频道——按请求的目标频道独立校验代次
+                if (request.kind === "command") {
+                    const binding = request.channel ? bindings.get(request.channel) : undefined;
+                    if (
+                        !binding ||
+                        binding.status !== "bound" ||
+                        binding.generation !== request.bindingGeneration
+                    ) {
+                        request.reject(
+                            binding?.status === "invalidated"
+                                ? binding.error
+                                : new FigmaError({
+                                    code: "PLUGIN_DISCONNECTED",
+                                    message: "The channel binding changed before the command response arrived.",
+                                }),
+                        );
+                        pendingRequests.delete(myResponse.id);
+                        return;
+                    }
                 }
 
                 if (myResponse.error) {
@@ -448,16 +461,23 @@ export function connectToFigma(port: number = defaultPort) {
             code: "PLUGIN_DISCONNECTED",
             message: "Connection closed",
         });
-        invalidateBoundChannel(disconnectError, false);
+        // figma-mcp-server 定制：多频道——所有已绑定频道一并失效（失效后须重新 join 才可用）
+        for (const [channel, binding] of bindings.entries()) {
+            if (binding.status === "bound") {
+                bindings.set(channel, {
+                    status: "invalidated",
+                    channel,
+                    generation: binding.generation,
+                    error: disconnectError,
+                    requiresLeave: false,
+                });
+            }
+        }
 
         // Reject all pending requests. Coded at origin (Q20): the plugin peer's
         // connection dropped, so the code is PLUGIN_DISCONNECTED — never
         // reconstructed from message prose downstream.
-        for (const [id, request] of pendingRequests.entries()) {
-            clearTimeout(request.timeout);
-            request.reject(disconnectError);
-            pendingRequests.delete(id);
-        }
+        rejectAllPending(disconnectError);
 
         // Attempt to reconnect. unref() so a pending reconnect alone never
         // keeps the process alive — when the MCP host disconnects, the server
@@ -523,62 +543,71 @@ export async function resetChannel(
         && options.releasedChannel.length > 0
         ? options.releasedChannel
         : undefined;
-    const nextUnboundState: ChannelBindingState = releasedChannel
-        ? { status: "unbound", releasedChannel }
-        : { status: "unbound" };
 
-    if (bindingState.status === "unbound") {
-        // A transport failure may have cleared the newly admitted binding
-        // before the channel tool performs its leg-2 cleanup. Do not lose the
-        // healthy predecessor that this same join attempt already released.
-        if (releasedChannel) bindingState = nextUnboundState;
-        return;
+    // figma-mcp-server 定制：多频道——清空全部绑定；曾绑定过的频道记录为
+    // lastReleasedChannel，供随后的 CHANNEL_NOT_BOUND 错误给出恢复提示
+    const previous = [...bindings.values()];
+    bindings.clear();
+    const boundChannels = previous
+        .filter((b): b is Extract<ChannelBinding, { status: "bound" }> => b.status === "bound")
+        .map((b) => b.channel);
+    if (boundChannels.length > 0) {
+        lastReleasedChannel = releasedChannel ?? boundChannels[boundChannels.length - 1];
+    } else if (releasedChannel) {
+        lastReleasedChannel = releasedChannel;
+    }
+    primaryChannel = null;
+
+    const resetError = new FigmaError({
+        code: "PLUGIN_DISCONNECTED",
+        message: "The channel binding was reset before the command completed.",
+    });
+    for (const binding of previous) {
+        rejectPendingForChannel(binding.channel, binding.generation, resetError);
     }
 
-    const previousBinding = bindingState;
-    bindingState = nextUnboundState;
-    rejectPendingForBinding(
-        previousBinding.generation,
-        new FigmaError({
-            code: "PLUGIN_DISCONNECTED",
-            message: "The channel binding was reset before the command completed.",
-        }),
-    );
+    for (const binding of previous) {
+        const mustLeave = binding.status === "bound"
+            || binding.requiresLeave;
+        if (!mustLeave) continue;
 
-    const mustLeave = previousBinding.status === "bound"
-        || previousBinding.requiresLeave;
-    if (!mustLeave) return;
-
-    try {
-        await sendLeaveRequest(previousBinding.channel);
-        logger.info(`Left channel: ${previousBinding.channel}`);
-    } catch (error) {
-        // A socket close is the protocol's final cleanup path. Do not leave a
-        // stale server-side MCP reservation after local state is already clear.
         try {
-            ws?.close?.();
-        } catch {
-            // Preserve the leave failure for the caller.
+            await sendLeaveRequest(binding.channel);
+            logger.info(`Left channel: ${binding.channel}`);
+        } catch (error) {
+            // A socket close is the protocol's final cleanup path. Do not leave a
+            // stale server-side MCP reservation after local state is already clear.
+            try {
+                ws?.close?.();
+            } catch {
+                // Preserve the leave failure for the caller.
+            }
+            throw error;
         }
-        throw error;
     }
 }
 
-export async function joinChannel(channelName: string): Promise<JoinChannelResult> {
+export async function joinChannel(
+    channelName: string,
+    options: { additive?: boolean } = {},
+): Promise<JoinChannelResult> {
     if (!ws || ws.readyState !== WS_OPEN) {
         throw new Error("Not connected to Figma");
     }
+
+    // figma-mcp-server 定制：多频道——additive（broker 池化加入）保留既有绑定仅追加；
+    // 缺省保持旧单频道行为：先释放全部既有绑定再 join
+    const additive = options.additive === true;
 
     let socketAdmittedJoin = false;
     // Non-empty only when this attempt gave up a live binding to make room.
     let releasedChannel: string | undefined;
     try {
-        // A connection owns at most one channel reservation. Detach the old
-        // pair before attempting a switch or rejoin; a failed new join therefore
-        // cannot silently leave later tools targeting the previous plugin.
-        if (bindingState.status !== "unbound") {
-            const previousBinding = bindingState;
-            const previousChannel = previousBinding.channel;
+        if (!additive && bindings.size > 0) {
+            const previousBound = [...bindings.values()]
+                .filter((b): b is Extract<ChannelBinding, { status: "bound" }> => b.status === "bound")
+                .map((b) => b.channel);
+            const previousLast = previousBound[previousBound.length - 1];
             try {
                 await resetChannel();
             } catch (leaveError: any) {
@@ -588,22 +617,18 @@ export async function joinChannel(channelName: string): Promise<JoinChannelResul
                 // never saw.
                 throw new FigmaError({
                     code: "CHANNEL_JOIN_FAILED",
-                    message: `Could not leave the current channel '${previousChannel}', so the join to '${channelName}' was not attempted: ${leaveError?.message ?? String(leaveError)}`,
+                    message: `Could not leave the current channel '${previousLast}', so the join to '${channelName}' was not attempted: ${leaveError?.message ?? String(leaveError)}`,
                     details: {
                         phase: "leave-previous-channel",
-                        previousChannel,
+                        previousChannel: previousLast,
                         requestedChannel: channelName,
                     },
                 });
             }
-            // Only a healthy bound state qualifies. An invalidated binding is
-            // already unusable, so naming it as a channel this attempt "cost"
-            // would fabricate recovery evidence. A same-channel rejoin DOES
-            // qualify: the live reservation was released before the failed
-            // replacement attempt.
-            if (previousBinding.status === "bound") {
-                releasedChannel = previousChannel;
-            }
+            // Only healthy bound channels qualify (invalidated ones are already
+            // unusable). A same-channel rejoin DOES qualify: the live
+            // reservation was released before the failed replacement attempt.
+            releasedChannel = previousLast;
         }
 
         const result = await sendCommandToFigma("join", { channel: channelName });
@@ -622,13 +647,14 @@ export async function joinChannel(channelName: string): Promise<JoinChannelResul
             pluginVersion: (result as any).pluginVersion,
             ...(releasedChannel ? { releasedChannel } : {}),
         };
-        bindingState = {
+        bindings.set(channelName, {
             status: "bound",
             channel: channelName,
             serverVersion: joined.serverVersion,
             pluginVersion: joined.pluginVersion,
             generation: ++nextBindingGeneration,
-        };
+        });
+        primaryChannel = channelName;
         logger.info(`Joined channel: ${channelName}`);
         return joined;
     } catch (error) {
@@ -639,6 +665,10 @@ export async function joinChannel(channelName: string): Promise<JoinChannelResul
         if (socketAdmittedJoin) {
             try {
                 await sendLeaveRequest(channelName);
+                // figma-mcp-server 定制：多频道——失败清理时若该频道本就有旧绑定，
+                // 摘除之（additive 重 join 半途失败不能留下"已加入"的假象）
+                bindings.delete(channelName);
+                if (primaryChannel === channelName) primaryChannel = null;
             } catch {
                 // Preserve the malformed-ack failure. Local state stays unbound;
                 // force-close so the bridge cannot retain a stale reservation.
@@ -655,7 +685,7 @@ export async function joinChannel(channelName: string): Promise<JoinChannelResul
         // Record it so later commands can say so, and attach it to the error so
         // the join result names the channel that must be rejoined.
         if (releasedChannel) {
-            bindingState = { status: "unbound", releasedChannel };
+            lastReleasedChannel = releasedChannel;
         }
 
         // Q20: code the join flow's locally-generated failures at origin. An
@@ -699,16 +729,24 @@ export function sendCommandToFigma(
 ): Promise<unknown> {
     return new Promise((resolve, reject) => {
         const requiresChannel = command !== "join";
-        const activeBinding = bindingState.status === "bound"
-            ? bindingState
+        const paramsRecord = (params ?? {}) as Record<string, unknown>;
+        // figma-mcp-server 定制：多频道——params.channel 为显式路由目标（broker 按
+        // args.channel/会话绑定/默认频道解析后注入）；未显式指定回落 primaryChannel
+        const explicitChannel = typeof paramsRecord.channel === "string" && paramsRecord.channel.length > 0
+            ? paramsRecord.channel
+            : undefined;
+        const targetChannel = requiresChannel
+            ? (explicitChannel ?? primaryChannel)
             : null;
+        const activeBinding = targetChannel ? bindings.get(targetChannel) : undefined;
 
         // Binding validity is checked before socket connectivity so a peer
         // invalidation remains the stable, actionable failure until channel_join
         // succeeds. No command frame is emitted while unbound/invalidated.
-        if (requiresChannel && !activeBinding) {
-            if (bindingState.status === "invalidated") {
-                reject(bindingState.error);
+        // figma-mcp-server 定制：多频道——按目标频道独立校验绑定
+        if (requiresChannel && (!activeBinding || activeBinding.status !== "bound")) {
+            if (activeBinding?.status === "invalidated") {
+                reject(activeBinding.error);
             } else {
                 // Rev 57: coded CHANNEL_NOT_BOUND rather than a bare Error on
                 // the UNKNOWN_ERROR fallback. P9-F2 made this a new reachable
@@ -716,16 +754,8 @@ export function sendCommandToFigma(
                 // D9's "adds or edits" rule applies and the code earns its own
                 // playbook entry. The factory carries the released channel when
                 // there is one, so recovery stays one round trip either way.
-                // Narrowed explicitly rather than read off the union: only the
-                // "unbound" member carries `releasedChannel`, and TypeScript
-                // cannot infer from `!activeBinding` that "bound" is excluded
-                // here. Runtime-identical — the property does not exist on the
-                // other members — but it is the difference between this file
-                // type-checking and not (Change 29, F6).
                 reject(new FigmaError(
-                    CLIENT_REFUSALS.CHANNEL_NOT_BOUND(
-                        bindingState.status === "unbound" ? bindingState.releasedChannel : undefined,
-                    ),
+                    CLIENT_REFUSALS.CHANNEL_NOT_BOUND(lastReleasedChannel),
                 ));
             }
             return;
@@ -741,7 +771,9 @@ export function sendCommandToFigma(
         const id = uuidv4();
 
         // Normalize node IDs in params (convert URL format to API format)
-        const normalizedParams = { ...(params as any) };
+        const normalizedParams = { ...paramsRecord };
+        // figma-mcp-server 定制：channel 是路由元数据，不下发给插件
+        if (command !== "join") delete normalizedParams.channel;
 
         // Handle single nodeId parameter
         if (normalizedParams.nodeId) {
@@ -814,7 +846,7 @@ export function sendCommandToFigma(
                     clientType: "mcp",
                     serverVersion: SERVER_VERSION,
                 }
-                : { channel: activeBinding!.channel }),
+                : { channel: targetChannel! }),
             message: {
                 id,
                 command,
@@ -839,7 +871,11 @@ export function sendCommandToFigma(
             timeout,
             lastActivity: Date.now(),
             kind: command === "join" ? "join" : "command",
-            ...(activeBinding ? { bindingGeneration: activeBinding.generation } : {}),
+            // figma-mcp-server 定制：多频道——命令按目标频道记录绑定代次
+            ...(requiresChannel ? { channel: targetChannel! } : {}),
+            ...(activeBinding && activeBinding.status === "bound"
+                ? { bindingGeneration: activeBinding.generation }
+                : {}),
         });
 
         try {

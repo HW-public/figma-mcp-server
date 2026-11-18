@@ -132,13 +132,22 @@ try {
     });
     child.stdin.write(JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }) + '\n');
 
-    const toolsRes = await send('tools/list', {});
-    const names = (toolsRes.result?.tools ?? []).map((t) => t.name);
+    // figma-mcp-server 定制: 桥/子进程就绪有约 1s 启动窗——轮询到 live 工具表推全再硬断言，
+    // 消除"认证时空表推送"竞态（断言强度不变：仍是精确计数）
+    let toolsRes;
+    let names = [];
+    for (let i = 0; i < 50; i++) {
+        toolsRes = await send('tools/list', {});
+        names = (toolsRes.result?.tools ?? []).map((t) => t.name);
+        if (names.length >= 51) break;
+        await new Promise((r) => setTimeout(r, 300));
+    }
     console.log(`工具总数: ${names.length}`);
     console.log(`REST 工具: ${['get_design_context', 'download_images'].filter((n) => names.includes(n)).join(', ')}`);
     const liveOnes = names.filter((n) => ['channel_join', 'page_info', 'create_frame', 'node_info'].includes(n));
     console.log(`Live 工具样例: ${liveOnes.join(', ') || '(未连接)'}`);
-    if (names.length !== 49) { console.log(`✘ 工具总数异常（期望 49）`); failed = true; }
+    // figma-mcp-server 定制: 多频道——broker 本地新增 channel_list/channel_use，live 工具 46→48
+    if (names.length !== 51) { console.log(`✘ 工具总数异常（期望 51）`); failed = true; }
 
     const callRes = await send('tools/call', {
         name: 'get_design_context',
@@ -151,9 +160,15 @@ try {
 
     // 多客户端：第二个 TCP 客户端直连隔离 broker（broker 已由 server 按需拉起，token 在隔离 state dir）
     const token = readFileSync(join(stateDir, 'broker.token'), 'utf-8').trim();
-    const raw = await brokerCall(token, { type: 'tools/list' });
-    const brokerToolCount = raw.tools?.length ?? 0;
-    const countOk = brokerToolCount >= 46;
+    // figma-mcp-server 定制: 同上就绪竞态——轮询到子进程工具表推全（≥48）再断言
+    let raw;
+    let brokerToolCount = 0;
+    for (let i = 0; i < 50 && brokerToolCount < 48; i++) {
+        raw = await brokerCall(token, { type: 'tools/list' });
+        brokerToolCount = raw.tools?.length ?? 0;
+        if (brokerToolCount < 48) await new Promise((r) => setTimeout(r, 300));
+    }
+    const countOk = brokerToolCount >= 48;
     console.log(`并发客户端直连 broker: ${brokerToolCount} 个 live 工具 ${countOk ? '✔' : '✘ 数量异常'}`);
     if (!countOk) failed = true;
 

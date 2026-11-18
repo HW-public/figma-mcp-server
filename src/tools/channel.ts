@@ -219,6 +219,12 @@ export function registerChannelTools(
                     // error-playbook entry.
                     .min(1, "channel is required. Ask the user for the 4-character code shown in the Figma plugin's status bar and pass it back verbatim.")
                     .describe("The name of the channel to join"),
+                // figma-mcp-server 定制：多频道——broker 池化加入时置 true：
+                // 保留既有频道绑定，仅追加本频道；缺省保持旧单频道行为（先释放再 join）
+                additive: z
+                    .boolean()
+                    .optional()
+                    .describe("Internal (broker multi-channel): keep existing channel bindings and only add this one"),
             }),
             outputSchema: looseOutput({
                 // figma-mcp-server 定制: status 增加 "failed" —— broker live 通道下 join 失败
@@ -266,7 +272,7 @@ export function registerChannelTools(
                 openWorldHint: true
             }
         },
-        async ({ channel }: any) => {
+        async ({ channel, additive }: any) => {
             if (!channel) {
                 return toolResult({
                     status: "error",
@@ -280,7 +286,8 @@ export function registerChannelTools(
                 let versions: { serverVersion: string; pluginVersion: string };
                 let releasedChannel: string | undefined;
                 try {
-                    const joined = await joinChannel(channel);
+                    // figma-mcp-server 定制：多频道——additive 时保留既有绑定仅追加
+                    const joined = await joinChannel(channel, { additive: additive === true });
                     versions = {
                         serverVersion: joined.serverVersion,
                         pluginVersion: joined.pluginVersion,

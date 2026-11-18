@@ -35,6 +35,8 @@ interface ConnectedPeer {
   peerId: string;
   clientType: ChannelClientType | null;
   channel: string | null;
+  /** figma-mcp-server 定制：多频道——该 peer 已加入的频道集（mcp 可加入多频道；channel 为最近加入者，作路由 fallback） */
+  joinedChannels: Set<string>;
   pluginVersion?: string;
   serverVersion?: string;
   /** figma-mcp-server 定制：心跳漏计（半开连接检测） */
@@ -269,7 +271,13 @@ export function createFigmaSocketServer(
     clearPendingRoutes(channel);
     channel.mcp = null;
     channel.serverVersion = undefined;
-    peer.channel = null;
+    // figma-mcp-server 定制：多频道——仅从该 peer 的已加入集摘除本频道；
+    // peer.channel 回落到其余已加入频道（保持旧帧的路由 fallback 可用）
+    peer.joinedChannels.delete(channel.name);
+    if (peer.channel === channel.name) {
+      const remaining = [...peer.joinedChannels];
+      peer.channel = remaining.length > 0 ? remaining[remaining.length - 1] : null;
+    }
     peer.serverVersion = undefined;
     if (notifyPlugin) sendPeerLeftNotice(channel.plugin, channel.name);
     if (!channel.plugin) channels.delete(channel.name);
@@ -285,13 +293,19 @@ export function createFigmaSocketServer(
     clearPendingRoutes(channel);
     channel.plugin = null;
     peer.channel = null;
+    peer.joinedChannels.delete(channel.name);
     peer.pluginVersion = undefined;
 
     const boundMcp = channel.mcp;
     if (boundMcp) {
       channel.mcp = null;
       channel.serverVersion = undefined;
-      boundMcp.channel = null;
+      // figma-mcp-server 定制：多频道——mcp peer 可能还绑着其他频道，只摘本频道
+      boundMcp.joinedChannels.delete(channel.name);
+      if (boundMcp.channel === channel.name) {
+        const remaining = [...boundMcp.joinedChannels];
+        boundMcp.channel = remaining.length > 0 ? remaining[remaining.length - 1] : null;
+      }
       boundMcp.serverVersion = undefined;
 
       if (notifyMcp) {
@@ -312,12 +326,18 @@ export function createFigmaSocketServer(
     channels.delete(channel.name);
   };
 
-  const leavePeer = (peer: ConnectedPeer, notifyBoundPeer: boolean) => {
-    const channelName = peer.channel;
-    if (!channelName) return;
-    const channel = channels.get(channelName);
+  // figma-mcp-server 定制：多频道——按频道摘除；mcp peer 加入多频道后逐个 leave/断开
+  const leavePeer = (
+    peer: ConnectedPeer,
+    channelName: string | null,
+    notifyBoundPeer: boolean,
+  ) => {
+    const target = channelName ?? peer.channel;
+    if (!target) return;
+    const channel = channels.get(target);
     if (!channel) {
-      peer.channel = null;
+      peer.joinedChannels.delete(target);
+      if (peer.channel === target) peer.channel = null;
       return;
     }
 
@@ -326,7 +346,8 @@ export function createFigmaSocketServer(
     } else if (channel.mcp === peer) {
       detachMcp(channel, peer, notifyBoundPeer);
     } else {
-      peer.channel = null;
+      peer.joinedChannels.delete(target);
+      if (peer.channel === target) peer.channel = null;
     }
   };
 
@@ -420,6 +441,7 @@ export function createFigmaSocketServer(
     channel.plugin = peer;
     channels.set(channelName, channel);
     peer.channel = channelName;
+    peer.joinedChannels.add(channelName);
     peer.pluginVersion = pluginVersion;
 
     acknowledgePluginJoin(
@@ -445,13 +467,9 @@ export function createFigmaSocketServer(
     }
     peer.clientType = "mcp";
 
-    if (peer.channel && peer.channel !== channelName) {
-      sendProtocolError(
-        peer,
-        `Leave channel '${peer.channel}' before joining another channel.`,
-      );
-      return;
-    }
+    // figma-mcp-server 定制：多频道——mcp 可加入多个频道（每频道单 MCP 的
+    // CHANNEL_IN_USE 校验保留在下方）；旧单频道客户端由 client 侧先 leave 再 join，
+    // 行为不变。此处不再强制 "Leave channel before joining another"。
 
     const channel = channels.get(channelName);
     if (!channel?.plugin) {
@@ -501,6 +519,7 @@ export function createFigmaSocketServer(
     channel.mcp = peer;
     channel.serverVersion = serverVersion;
     peer.channel = channelName;
+    peer.joinedChannels.add(channelName);
     peer.serverVersion = serverVersion;
 
     acknowledgeMcpJoin(
@@ -548,7 +567,8 @@ export function createFigmaSocketServer(
 
     // Unbind the connection's real pair rather than trusting a caller-supplied
     // room name. An idempotent repeat still receives an acknowledgement.
-    leavePeer(peer, true);
+    // figma-mcp-server 定制：多频道——只 leave 请求的频道，其余已加入频道保留
+    leavePeer(peer, requestedChannel, true);
 
     const channelName = actualChannel ?? requestedChannel ?? "";
     send(
@@ -681,7 +701,9 @@ export function createFigmaSocketServer(
     const channelName = data.channel;
     if (
       typeof channelName !== "string" ||
-      peer.channel !== channelName ||
+      // figma-mcp-server 定制：多频道——帧带 channel 且该 peer 已加入即可路由；
+      // 未带的旧帧走 peer.channel fallback（旧行为兼容）
+      (!peer.joinedChannels.has(channelName) && peer.channel !== channelName) ||
       !isRecord(data.message)
     ) {
       return;
@@ -709,6 +731,7 @@ export function createFigmaSocketServer(
       peerId: peerIdFactory(),
       clientType: null,
       channel: null,
+      joinedChannels: new Set(),
     };
     peers.set(socket, peer);
     logger.log("New client connected");
@@ -745,7 +768,16 @@ export function createFigmaSocketServer(
 
     socket.on("close", () => {
       logger.log("Client disconnected");
-      leavePeer(peer, true);
+      // figma-mcp-server 定制：多频道——逐个清理该 peer 加入的所有频道（mcp 可能多频道）
+      const joined = [...peer.joinedChannels];
+      for (const name of joined) {
+        leavePeer(peer, name, true);
+      }
+      if (peer.channel && !joined.includes(peer.channel)) {
+        leavePeer(peer, peer.channel, true);
+      }
+      peer.joinedChannels.clear();
+      peer.channel = null;
       peers.delete(socket);
     });
 

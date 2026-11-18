@@ -2,15 +2,37 @@
 
 扫描标记：`figma-mcp-server 定制` ｜ 范围：`src/bridge、src/tools、src/protocol、plugin` ｜ 由 `scripts/list-customizations.mjs` 生成
 
-共 114 处：
+共 138 处：
 
+- `src/bridge/client.ts:206` — // figma-mcp-server 定制：多频道——单连接可绑定多个频道（broker 多频道池）。
+- `src/bridge/client.ts:237` — /** figma-mcp-server 定制：多频道——命令帧的目标频道（代次校验按频道独立） */
+- `src/bridge/client.ts:324` — // figma-mcp-server 定制：多频道——只失效帧里点名的那个频道，其余绑定不受影响
+- `src/bridge/client.ts:413` — // figma-mcp-server 定制：多频道——按请求的目标频道独立校验代次
+- `src/bridge/client.ts:464` — // figma-mcp-server 定制：多频道——所有已绑定频道一并失效（失效后须重新 join 才可用）
+- `src/bridge/client.ts:547` — // figma-mcp-server 定制：多频道——清空全部绑定；曾绑定过的频道记录为
+- `src/bridge/client.ts:598` — // figma-mcp-server 定制：多频道——additive（broker 池化加入）保留既有绑定仅追加；
+- `src/bridge/client.ts:668` — // figma-mcp-server 定制：多频道——失败清理时若该频道本就有旧绑定，
+- `src/bridge/client.ts:733` — // figma-mcp-server 定制：多频道——params.channel 为显式路由目标（broker 按
+- `src/bridge/client.ts:746` — // figma-mcp-server 定制：多频道——按目标频道独立校验绑定
+- `src/bridge/client.ts:775` — // figma-mcp-server 定制：channel 是路由元数据，不下发给插件
+- `src/bridge/client.ts:874` — // figma-mcp-server 定制：多频道——命令按目标频道记录绑定代次
 - `src/bridge/server.ts:68` — // figma-mcp-server 定制：供 broker 以 --fe-child=server spawn 自身时路由调用
-- `src/bridge/socket.ts:40` — /** figma-mcp-server 定制：心跳漏计（半开连接检测） */
-- `src/bridge/socket.ts:111` — // figma-mcp-server 定制：WS 心跳——检测半开连接（插件进程死了但 TCP 不断开时，
-- `src/bridge/socket.ts:826` — // figma-mcp-server 定制：供 broker 以 --fe-child=socket spawn 自身时路由调用
+- `src/bridge/socket.ts:38` — /** figma-mcp-server 定制：多频道——该 peer 已加入的频道集（mcp 可加入多频道；channel 为最近加入者，作路由 fallback） */
+- `src/bridge/socket.ts:42` — /** figma-mcp-server 定制：心跳漏计（半开连接检测） */
+- `src/bridge/socket.ts:113` — // figma-mcp-server 定制：WS 心跳——检测半开连接（插件进程死了但 TCP 不断开时，
+- `src/bridge/socket.ts:274` — // figma-mcp-server 定制：多频道——仅从该 peer 的已加入集摘除本频道；
+- `src/bridge/socket.ts:303` — // figma-mcp-server 定制：多频道——mcp peer 可能还绑着其他频道，只摘本频道
+- `src/bridge/socket.ts:329` — // figma-mcp-server 定制：多频道——按频道摘除；mcp peer 加入多频道后逐个 leave/断开
+- `src/bridge/socket.ts:470` — // figma-mcp-server 定制：多频道——mcp 可加入多个频道（每频道单 MCP 的
+- `src/bridge/socket.ts:570` — // figma-mcp-server 定制：多频道——只 leave 请求的频道，其余已加入频道保留
+- `src/bridge/socket.ts:704` — // figma-mcp-server 定制：多频道——帧带 channel 且该 peer 已加入即可路由；
+- `src/bridge/socket.ts:771` — // figma-mcp-server 定制：多频道——逐个清理该 peer 加入的所有频道（mcp 可能多频道）
+- `src/bridge/socket.ts:858` — // figma-mcp-server 定制：供 broker 以 --fe-child=socket spawn 自身时路由调用
 - `src/tools/annotation.ts:179` — // figma-mcp-server 定制：无效 categoryId 在命令级整体拒批
 - `src/tools/channel.ts:48` — // figma-mcp-server 定制: CHANNEL_NOT_FOUND 条目已移除 —— 全仓库无任何产生点
-- `src/tools/channel.ts:224` — // figma-mcp-server 定制: status 增加 "failed" —— broker live 通道下 join 失败
+- `src/tools/channel.ts:222` — // figma-mcp-server 定制：多频道——broker 池化加入时置 true：
+- `src/tools/channel.ts:230` — // figma-mcp-server 定制: status 增加 "failed" —— broker live 通道下 join 失败
+- `src/tools/channel.ts:289` — // figma-mcp-server 定制：多频道——additive 时保留既有绑定仅追加
 - `src/tools/component.ts:54` — // figma-mcp-server 定制：统一 propertyName 措辞
 - `src/tools/component.ts:58` — // figma-mcp-server 定制：也接受 library component key
 - `src/tools/component.ts:60` — // figma-mcp-server 定制：与 defaultValue 对齐
@@ -44,6 +66,8 @@
 - `src/tools/create.ts:324` — // figma-mcp-server 定制：描述补 propertyValues 约束与组件重命名行为
 - `src/tools/create.ts:330` — // figma-mcp-server 定制：约束在描述中声明，插件侧校验
 - `src/tools/create.ts:333` — // figma-mcp-server 定制：至少一个属性
+- `src/tools/index.ts:329` — // figma-mcp-server 定制：多频道——全 live 工具统一加可选 channel
+- `src/tools/index.ts:345` — // figma-mcp-server 定制：多频道——描述统一补一句路由说明（公共描述点，一处生效）
 - `src/tools/instance.ts:17` — // figma-mcp-server 定制：统一 propertyName 措辞
 - `src/tools/instance.ts:19` — // figma-mcp-server 定制：补充本地节点 ID/库 key 与 BOOLEAN 字符串形态
 - `src/tools/instance.ts:42` — // figma-mcp-server 定制：实际仅返回 overridesCount

@@ -326,6 +326,29 @@ export function withStrictInputSchemas(server: McpServer): McpServer {
                             ...config,
                             inputSchema: recursivelyStrictInputSchema(schema, name),
                         };
+                        // figma-mcp-server 定制：多频道——全 live 工具统一加可选 channel
+                        // 路由参数（broker 解析后注入；schema 层放这里一处，避免逐个工具改）。
+                        // 路由优先级：args.channel > 会话绑定（channel_use）> 默认频道。
+                        // 已自带 channel 字段的工具（channel_join）不覆盖，保留其专用校验。
+                        if (typeof config.inputSchema.extend === "function"
+                            && !config.inputSchema.shape?.channel) {
+                            config = {
+                                ...config,
+                                inputSchema: config.inputSchema.extend({
+                                    channel: z.string().optional().describe(
+                                        "可选目标频道码（多频道）；缺省=本会话绑定频道（channel_use），再缺省=默认频道。可用 channel_list 查看全部频道",
+                                    ),
+                                }),
+                            };
+                        }
+                    }
+                    // figma-mcp-server 定制：多频道——描述统一补一句路由说明（公共描述点，一处生效）
+                    if (typeof config?.description === "string" && !config.description.includes("【多频道】")) {
+                        config = {
+                            ...config,
+                            description: config.description
+                                + " 【多频道】可选 channel 参数指定目标频道码；缺省路由：本会话绑定（channel_use）> 默认频道；可用 channel_list 查看频道与文档名映射。",
+                        };
                     }
                     // Every advertised output schema must accept the common D9
                     // error envelope: the pinned SDK client validates any present
