@@ -6839,7 +6839,7 @@ Processing annotation ${i + 1}/${annotations.length}:`,
     assertNotLocked(parent);
     assertNotInstanceParent(parent, "appended to");
   }
-  var PLUGIN_VERSION = true ? "1.0.1" : "unknown";
+  var PLUGIN_VERSION = true ? "1.0.2" : "unknown";
   figma.showUI(`<!DOCTYPE html>\r
 <html lang="zh-CN">\r
 \r
