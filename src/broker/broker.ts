@@ -94,7 +94,11 @@ function summarizeForAudit(args: unknown): string {
     } catch {
         s = String(args);
     }
-    return s.length > 100 ? `${s.slice(0, 100)}…` : s;
+    // figma-mcp-server 定制: 超限截断改成 头+尾 双保留——create_* 的关键参数（parentId、
+    // characters、坐标）在 JSON 尾部，纯头部截断会把排查问题最需要的信息切掉
+    const AUDIT_ARGS_MAX = 160;
+    if (s.length > AUDIT_ARGS_MAX) return `${s.slice(0, 120)}…${s.slice(-36)}`;
+    return s;
 }
 
 // figma-mcp-server 定制: 解析图像字节流的像素尺寸（PNG 读 IHDR，JPEG 扫 SOF 段），
