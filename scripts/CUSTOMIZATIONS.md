@@ -2,7 +2,7 @@
 
 扫描标记：`figma-mcp-server 定制` ｜ 范围：`src/bridge、src/tools、src/protocol、plugin` ｜ 由 `scripts/list-customizations.mjs` 生成
 
-共 105 处：
+共 107 处：
 
 - `src/bridge/server.ts:68` — // figma-mcp-server 定制：供 broker 以 --fe-child=server spawn 自身时路由调用
 - `src/bridge/socket.ts:40` — /** figma-mcp-server 定制：心跳漏计（半开连接检测） */
@@ -87,14 +87,15 @@
 - `src/tools/variable.ts:282` — // figma-mcp-server 定制：handler 返回 deleted/deletedCollection，无 message
 - `src/protocol/errorCodes.ts:133` — // figma-mcp-server 定制：CHANNEL_NOT_FOUND 为死码——socket 层拒连已改用 PLUGIN_PEER_UNAVAILABLE，全仓库无产生点，保留定义仅作 ratified 契约存档
 - `src/protocol/version.ts:1` — // figma-mcp-server 定制版（上游 readRootPackageMetadata 已删）：频道握手的 serverVersion 必须和
-- `plugin/code.js:7982` — // figma-mcp-server 定制：create_section 分发
+- `plugin/code.js:7985` — // figma-mcp-server 定制：create_section 分发
 - `plugin/handlers/componentHandlers.ts:341` — // figma-mcp-server 定制：maxDimension 上限保护——防止误传大 scale 导出 4x 巨图写爆磁盘
 - `plugin/handlers/componentHandlers.ts:361` — // figma-mcp-server 定制：按 maxDimension 收敛 scale（raster 格式）
 - `plugin/handlers/nodeCreators.ts:91` — // figma-mcp-server 定制：coordinateSpace=canvas 时把画布绝对坐标换算成父级相对坐标（默认 parent=旧行为，将切换 canvas 默认另行通知）
-- `plugin/handlers/nodeCreators.ts:256` — // figma-mcp-server 定制：coordinateSpace=canvas 时把画布绝对坐标换算成父级相对坐标（默认 parent=旧行为，将切换 canvas 默认另行通知）
-- `plugin/handlers/nodeCreators.ts:359` — // figma-mcp-server 定制：创建 SECTION（分区）——Figma 中合法的导航容器，
-- `plugin/handlers/nodeCreators.ts:381` — // figma-mcp-server 定制：coordinateSpace=canvas 时把画布绝对坐标换算成父级相对坐标（默认 parent=旧行为，将切换 canvas 默认另行通知）
-- `plugin/handlers/nodeCreators.ts:484` — // figma-mcp-server 定制：coordinateSpace=canvas 时把画布绝对坐标换算成父级相对坐标（默认 parent=旧行为，将切换 canvas 默认另行通知）
+- `plugin/handlers/nodeCreators.ts:180` — // figma-mcp-server 定制：create_shape 消费 strokeWeight（schema 已放行，此前静默丢弃）
+- `plugin/handlers/nodeCreators.ts:261` — // figma-mcp-server 定制：coordinateSpace=canvas 时把画布绝对坐标换算成父级相对坐标（默认 parent=旧行为，将切换 canvas 默认另行通知）
+- `plugin/handlers/nodeCreators.ts:364` — // figma-mcp-server 定制：创建 SECTION（分区）——Figma 中合法的导航容器，
+- `plugin/handlers/nodeCreators.ts:386` — // figma-mcp-server 定制：coordinateSpace=canvas 时把画布绝对坐标换算成父级相对坐标（默认 parent=旧行为，将切换 canvas 默认另行通知）
+- `plugin/handlers/nodeCreators.ts:489` — // figma-mcp-server 定制：coordinateSpace=canvas 时把画布绝对坐标换算成父级相对坐标（默认 parent=旧行为，将切换 canvas 默认另行通知）
 - `plugin/handlers/nodeModifiers.ts:51` — // figma-mcp-server 定制：coordinateSpace=canvas 时把画布绝对坐标换算成父级相对坐标（默认 parent=旧行为，将切换 canvas 默认另行通知）
 - `plugin/handlers/prototypingHandlers.ts:165` — // figma-mcp-server 定制：向上找"屏"——parent 为 PAGE 或 SECTION 即顶层（Figma 导航目标规则）
 - `plugin/handlers/prototypingHandlers.ts:203` — // figma-mcp-server 定制：NAVIGATE 目标预校验——Figma API 的错误把"目标不存在/非顶层/跨页"混成一句，
@@ -102,6 +103,7 @@
 - `plugin/handlers/prototypingHandlers.ts:235` — // figma-mcp-server 定制：Figma 内部超时的文案说"check your internet"有误导——实际是插件↔Figma 桌面端连接问题
 - `plugin/handlers/stylingHandlers.ts:43` — // figma-mcp-server 定制：gradient 计入模式计数，否则 gradient-only 会在此被误拦（gradient 分支变死代码）
 - `plugin/handlers/stylingHandlers.ts:84` — // figma-mcp-server 定制：gradientTransform 便捷角度 —— 支持 number 或 {angle:number}（度，顺时针，0=从上到下渐变，180=向上），
+- `plugin/handlers/stylingHandlers.ts:89` — // figma-mcp-server 定制：gradientTransform 便捷角度 —— 支持 number、{angle:number}，或 gradient 兄弟键 angle（设计会话实测的调用形态）
 - `plugin/handlers/vectorHandlers.ts:21` — // figma-mcp-server 定制：coordinateSpace=canvas 时把画布绝对坐标换算成父级相对坐标（默认 parent=旧行为，将切换 canvas 默认另行通知）
 - `plugin/src/main.ts:127` — // figma-mcp-server 定制：strictNames===false 时跳过节点名校验（scope/locked/instance 等其他校验保留）
 - `plugin/src/main.ts:144` — // figma-mcp-server 定制：strictNames===false 时跳过父节点名校验

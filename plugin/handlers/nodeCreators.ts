@@ -177,6 +177,11 @@ export async function createShape(params: any) {
             }];
         }
 
+        // figma-mcp-server 定制：create_shape 消费 strokeWeight（schema 已放行，此前静默丢弃）
+        if (typeof params?.strokeWeight === "number" && params.strokeWeight > 0) {
+            node.strokeWeight = params.strokeWeight;
+        }
+
         // Handle absolute positioning if requested and parent is auto-layout
         if (useAbsolutePosition && parentId) {
             if (parent && (parent.layoutMode === "HORIZONTAL" || parent.layoutMode === "VERTICAL")) {

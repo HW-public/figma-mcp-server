@@ -1704,6 +1704,9 @@ Nothing was deleted. Read each listed consumer's current state with node_info (n
           opacity: typeof strokeColor.a === "number" ? strokeColor.a : 1
         }];
       }
+      if (typeof (params == null ? void 0 : params.strokeWeight) === "number" && params.strokeWeight > 0) {
+        node.strokeWeight = params.strokeWeight;
+      }
       if (useAbsolutePosition && parentId) {
         if (parent && (parent.layoutMode === "HORIZONTAL" || parent.layoutMode === "VERTICAL")) {
           node.layoutPositioning = "ABSOLUTE";
@@ -2659,7 +2662,7 @@ Nothing was deleted. Read each listed consumer's current state with node_info (n
       if (!gType) throw new Error(`node_set_fill: unsupported gradient type '${gradient.type}' (use LINEAR/RADIAL/ANGULAR/DIAMOND)`);
       let gradientTransform = gradient.gradientTransform || [[1, 0, 0], [0, 1, 0]];
       let gradientTransformNote = "";
-      const angleDeg = typeof gradientTransform === "number" ? gradientTransform : !Array.isArray(gradientTransform) && typeof (gradientTransform == null ? void 0 : gradientTransform.angle) === "number" ? gradientTransform.angle : null;
+      const angleDeg = typeof gradientTransform === "number" ? gradientTransform : !Array.isArray(gradientTransform) && typeof (gradientTransform == null ? void 0 : gradientTransform.angle) === "number" ? gradientTransform.angle : typeof gradient.angle === "number" ? gradient.angle : null;
       if (angleDeg !== null) {
         const rad = angleDeg * Math.PI / 180;
         const cos = Math.cos(rad);

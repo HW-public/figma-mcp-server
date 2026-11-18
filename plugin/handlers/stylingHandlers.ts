@@ -86,11 +86,13 @@ export async function setFillColor(params: any) {
         //   x' = cos*(x-0.5) + 0.5 - sin*(y-0.5)
         //   y' = sin*(x-0.5) + 0.5 + cos*(y-0.5)
         // 即 [[cos, -sin, 0.5-0.5*cos+0.5*sin], [sin, cos, 0.5-0.5*sin-0.5*cos]]；angle=0 时退化为 Figma 默认 [[1,0,0],[0,1,0]]
+        // figma-mcp-server 定制：gradientTransform 便捷角度 —— 支持 number、{angle:number}，或 gradient 兄弟键 angle（设计会话实测的调用形态）
         let gradientTransform: any = gradient.gradientTransform || [[1, 0, 0], [0, 1, 0]];
         let gradientTransformNote = "";
         const angleDeg = typeof gradientTransform === "number"
             ? gradientTransform
-            : (!Array.isArray(gradientTransform) && typeof gradientTransform?.angle === "number" ? gradientTransform.angle : null);
+            : (!Array.isArray(gradientTransform) && typeof gradientTransform?.angle === "number" ? gradientTransform.angle
+                : (typeof gradient.angle === "number" ? gradient.angle : null));
         if (angleDeg !== null) {
             const rad = angleDeg * Math.PI / 180;
             const cos = Math.cos(rad);

@@ -505,7 +505,7 @@ export function registerNodeTools(server: McpServer) {
                     .optional()
                     .describe("Alpha component (0-1)"),
                 // figma-mcp-server 定制：渐变约束补全（clamp、GRADIENT_ 前缀、≥2 stops）
-                gradient: z.any().optional().describe("Gradient fill: {type: LINEAR|RADIAL|ANGULAR|DIAMOND (GRADIENT_ prefix also accepted), stops: [{position, color: {r,g,b,a}}], gradientTransform?}. Stop positions are clamped to 0-1; at least 2 stops required. gradientTransform 可传 {angle: 度数字面量}（自动转矩阵）或标准 2x3 仿射矩阵 [[a,b,c],[d,e,f]]"),
+                gradient: z.any().optional().describe("Gradient fill: {type: LINEAR|RADIAL|ANGULAR|DIAMOND (GRADIENT_ prefix also accepted), stops: [{position, color: {r,g,b,a}}], gradientTransform?}. Stop positions are clamped to 0-1; at least 2 stops required. gradientTransform 可传 {angle: 度数字面量}、gradient 顶层 angle 键（自动转矩阵）或标准 2x3 仿射矩阵 [[a,b,c],[d,e,f]]"),
                 image: z.object({
                     url: z.string().url().optional().describe("HTTP(S) URL to a PNG/JPEG/GIF the plugin fetches via createImageAsync. Max 4096px per side and NOT resized — pre-resize larger images yourself, or use bytesBase64 (which is auto-resized)."),
                     bytesBase64: z.string().optional().describe("Base64-encoded raw PNG/JPEG/GIF bytes. PNG/JPEG over 4096px per side are auto-downscaled server-side (aspect ratio preserved); GIF is not resized. Very large PNG/JPEG (over ~45 megapixels) exceed the server resize budget and are rejected — pre-resize those yourself. Heavier over the socket."),
