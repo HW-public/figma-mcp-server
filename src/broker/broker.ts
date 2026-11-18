@@ -1105,11 +1105,19 @@ class Broker {
                     const startedAt = Date.now();
                     if (this.config.auditLog) log(this.config, `[call] ${toolName} ${summarizeForAudit(callArgs)}`);
                     try {
-                        const result = toolName === 'channel_list'
+                        const payload = toolName === 'channel_list'
                             ? { status: 'success', ...this.channelPoolSnapshot(clientId) }
                             : this.applyChannelUse(clientId, callArgs);
                         if (this.config.auditLog) log(this.config, `[ok] ${toolName} ${Date.now() - startedAt}ms`);
-                        send({ type: 'result', id: msg.id, result });
+                        // figma-mcp-server 定制: 包成标准 CallToolResult 形（content+structuredContent）——
+                        // 瘦客户端 server.ts 对 live 结果是原样透传，裸对象无 content 会让 MCP 宿主显示"无输出"
+                        send({
+                            type: 'result', id: msg.id,
+                            result: {
+                                content: [{ type: 'text', text: JSON.stringify(payload, null, 2) }],
+                                structuredContent: payload,
+                            },
+                        });
                     } catch (e) {
                         const message = this.translateError((e as Error).message);
                         if (this.config.auditLog) {
