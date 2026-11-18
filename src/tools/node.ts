@@ -114,7 +114,7 @@ export function registerNodeTools(server: McpServer) {
         {
             title: "Transform Node",
             // figma-mcp-server 定制：描述补 auto-layout 限制
-            description: "Move and/or resize a node by setting absolute `x`/`y`/`width`/`height` (any subset). Auto-layout limits: if the node's parent is auto-layout and the node is not absolutely positioned, setting `x`/`y` fails with Operation Denied; resizing a node whose parent uses HUG/FILL sizing knocks that axis back to FIXED, reported via `warnings`. Top-level `strictNames: false` skips the nodeName consistency check — scripts keep working after a node is renamed (nodes are located by nodeId).",
+            description: "Move and/or resize a node by setting `x`/`y`/`width`/`height` (any subset). `x`/`y` are parent-relative by default — pass coordinateSpace:'canvas' for canvas-absolute coordinates. Auto-layout limits: if the node's parent is auto-layout and the node is not absolutely positioned, setting `x`/`y` fails with Operation Denied; resizing a node whose parent uses HUG/FILL sizing knocks that axis back to FIXED, reported via `warnings`. Top-level `strictNames: false` skips the nodeName consistency check — scripts keep working after a node is renamed (nodes are located by nodeId).",
             inputSchema: z.object({
                 nodeId: z.string().describe("The ID of the node to transform"),
                 nodeName: z.string().describe("The node's current exact name, passed back verbatim from `node_info`."),
@@ -137,6 +137,8 @@ export function registerNodeTools(server: McpServer) {
                 height: z.number().optional().describe("Resulting height"),
                 // figma-mcp-server 定制：HUG/FILL 被打回 FIXED 等降级经 warnings 返回
                 warnings: z.array(z.string()).optional().describe("Non-fatal side effects (e.g., a parent HUG/FILL axis knocked back to FIXED by a resize)"),
+                // figma-mcp-server 定制：插件侧回显实际生效的 coordinateSpace
+                coordinateSpace: z.enum(["canvas", "parent"]).optional().describe("Echo of the coordinate space actually applied (default 'parent')"),
             }),
             annotations: {
                 idempotentHint: true,

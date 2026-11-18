@@ -52,6 +52,8 @@ export function registerCreateTools(server: McpServer) {
                 id: z.string().describe("ID of the created shape"),
                 name: z.string().describe("Name of the created shape"),
                 parentId: z.string().optional().describe("ID of the parent the node was placed into — confirm containment without a follow-up read"),
+                // figma-mcp-server 定制：插件侧回显实际生效的 coordinateSpace
+                coordinateSpace: z.enum(["canvas", "parent"]).optional().describe("Echo of the coordinate space actually applied (default 'parent')"),
             }),
             annotations: {
                 openWorldHint: true
@@ -113,6 +115,8 @@ export function registerCreateTools(server: McpServer) {
                 id: z.string().describe("ID of the created frame"),
                 name: z.string().describe("Name of the created frame"),
                 parentId: z.string().optional().describe("ID of the parent the node was placed into — confirm containment without a follow-up read"),
+                // figma-mcp-server 定制：插件侧回显实际生效的 coordinateSpace
+                coordinateSpace: z.enum(["canvas", "parent"]).optional().describe("Echo of the coordinate space actually applied (default 'parent')"),
             }),
             annotations: {
                 openWorldHint: true
@@ -150,6 +154,8 @@ export function registerCreateTools(server: McpServer) {
                 id: z.string().describe("ID of the created section"),
                 name: z.string().describe("Name of the created section"),
                 parentId: z.string().optional().describe("ID of the parent the section was placed into"),
+                // figma-mcp-server 定制：插件侧回显实际生效的 coordinateSpace
+                coordinateSpace: z.enum(["canvas", "parent"]).optional().describe("Echo of the coordinate space actually applied (default 'parent')"),
             }),
             annotations: {
                 openWorldHint: true
@@ -201,6 +207,8 @@ export function registerCreateTools(server: McpServer) {
                 id: z.string().describe("ID of the created text node"),
                 name: z.string().describe("Name of the created text node"),
                 parentId: z.string().optional().describe("ID of the parent the node was placed into — confirm containment without a follow-up read"),
+                // figma-mcp-server 定制：插件侧回显实际生效的 coordinateSpace
+                coordinateSpace: z.enum(["canvas", "parent"]).optional().describe("Echo of the coordinate space actually applied (default 'parent')"),
             }),
             annotations: {
                 openWorldHint: true
@@ -239,6 +247,8 @@ export function registerCreateTools(server: McpServer) {
                 id: z.string().describe("ID of the created node"),
                 name: z.string().describe("Name of the created node"),
                 parentId: z.string().optional().describe("ID of the parent the node was placed into — confirm containment without a follow-up read"),
+                // figma-mcp-server 定制：插件侧回显实际生效的 coordinateSpace
+                coordinateSpace: z.enum(["canvas", "parent"]).optional().describe("Echo of the coordinate space actually applied (default 'parent')"),
             }),
             annotations: {
                 openWorldHint: true

@@ -24,7 +24,7 @@
 │      │ spawn 自身 + --fe-child 路由（子进程代码已打进 broker.mjs）           │
       ▼
 ┌─ bridge/（插件桥进程对，全机唯一） ─────────────────────────────────────────┐
-│  server.ts（MCP child，stdio）──注册──▶ tools/（45 个 live 工具 schema）     │
+│  server.ts（MCP child，stdio）──注册──▶ tools/（46 个 live 工具 schema）     │
 │  socket.ts（WS 桥 :3055）──频道握手──▶ Figma 插件（plugin/，Figma 沙箱）     │
 │  client.ts / logger.ts / resources.ts / utils.ts / imageResize.ts / cli.ts │
 └────────────────────────────────────────────────────────────────────────────┘
@@ -39,7 +39,7 @@
 | 会话通道 | `client/` | live 瘦客户端（broker 通信）+ REST 读通道（Figma API） | 每会话 1 |
 | 进程编排 | `broker/` | 守护进程：端口抢占、子进程生命周期、FIFO 互斥队列、频道持久化、工具表推送、更新探测 | 全机 1 |
 | 插件桥 | `bridge/` | 连接 Figma 插件的子进程对（MCP child + WS 桥）及其支撑模块 | 全机 1 对 |
-| 工具层 | `tools/` | 45 个 live 工具的 zod schema 定义（bridge/server.ts 注册） | — |
+| 工具层 | `tools/` | 46 个 live 工具的 zod schema 定义（bridge/server.ts 注册） | — |
 | 协议层 | `protocol/` | 频道握手协议、错误码、节点类型、版本常量（多方共用，无依赖） | — |
 | 插件端 | `plugin/` | Figma 沙箱内运行的插件（UI/频道卡/handler），独立运行时 | Figma 内 1 |
 
@@ -53,6 +53,7 @@
 - **版本握手**：broker spawn 子进程时经 env 注入构建版本，频道握手 serverVersion 与插件同源比对，不一致即 VERSION_MISMATCH 拒连
 - **工具表推送**：broker 在客户端认证时和桥就绪时主动推送工具表，瘦客户端不会停留在空表（消除启动竞态）
 - **插件桥双进程**：socket.ts 持有 WS 桥（:3055，插件唯一接入点），server.ts 是 MCP child（stdio），两者经 WS 中继命令/回执，崩溃由 broker 重拉
+- **风暴读缓存**：9 个只读工具（node_info/page_info 等，schema 带 readOnlyHint）按 工具+规范化参数 缓存 TTL 毫秒（`FIGMA_MCP_READ_CACHE_TTL_MS`，默认 1500，≤0 禁用）；任何写工具成功即整表清空，读响应带 `fromCache`/`snapshotAgeMs` 可自查是否命中缓存
 
 ### 状态与配置
 
@@ -116,6 +117,8 @@ claude mcp add figma-mcp-server -- node <仓库路径>\dist\index.js
 | `FIGMA_MCP_BROKER_PORT` | `3056` | broker 监听端口（客户端经此与 broker 通信） |
 | `FIGMA_MCP_STATE_DIR` | `%LOCALAPPDATA%\figma-mcp-server` | 运行状态目录（log/pid/token/channel.json 等） |
 | `FIGMA_MCP_BROKER_IDLE_EXIT_MS` | `1800000` | broker 无客户端闲置自退阈值（毫秒） |
+| `FIGMA_MCP_AUDIT_LOG` | `on` | 工具调用审计日志开关（`off` 关闭） |
+| `FIGMA_MCP_READ_CACHE_TTL_MS` | `1500` | broker 风暴读缓存 TTL（毫秒，≤0 完全禁用；读工具响应携带 `fromCache`/`snapshotAgeMs` 元信息） |
 
 ## 工具
 
@@ -123,7 +126,7 @@ claude mcp add figma-mcp-server -- node <仓库路径>\dist\index.js
 - `get_design_context` — 传 Figma URL 或 fileKey，返回裁剪后的结构/尺寸/颜色/文本/自动布局（面向代码生成）
 - `download_images` — 批量导出节点图片（png/jpg/svg/pdf，支持 scale）
 
-**Live 通道（figma-edit-mcp 代理，45 个）**
+**Live 通道（figma-edit-mcp 代理，46 个）**
 - `channel_join` — 一般无需手动，broker 自动管理持久化频道；换频道直接再调一次 `channel_join` 即可
 - `page_info` / `node_info` — 读当前打开的文件（写操作前先 discover）
 - `create_frame` / `create_shape` / `create_text` / `create_component` 等 — 画布写入
@@ -136,7 +139,7 @@ claude mcp add figma-mcp-server -- node <仓库路径>\dist\index.js
 不存在自动降级，两个通道各走各的：
 
 - REST 通道的两个工具（`get_design_context` / `download_images`）永远走无头 REST，按 URL/fileKey 定位节点，不依赖当前打开的画布
-- Live 通道的 45 个工具永远操作当前打开的文件，是否传 URL/fileKey 都不影响通道选择
+- Live 通道的 46 个工具永远操作当前打开的文件，是否传 URL/fileKey 都不影响通道选择
 - 写操作仅 live 通道（Figma REST API 本身不支持写）；REST 收到写需求时请改用 live 工具
 - Live 未连接 → live 工具（含读操作）返回 `LIVE_NOT_CONNECTED` 及修复提示，REST 工具不受影响
 - 未配 `FIGMA_API_KEY` → REST 工具返回 `REST_NOT_CONFIGURED`，live 不受影响
@@ -150,7 +153,7 @@ claude mcp add figma-mcp-server -- node <仓库路径>\dist\index.js
 首个会话首次 live 调用
   ├─ 按需拉起 broker（抢占 3056 端口，全机唯一）
   ├─ broker spawn --fe-child=socket → WS 桥 (:3055)
-  ├─ broker spawn --fe-child=server → MCP child 经 WS 重试连接 → 枚举 45 个工具
+  ├─ broker spawn --fe-child=server → MCP child 经 WS 重试连接 → 枚举 46 个工具
   └─ 若已有持久化频道码 (%LOCALAPPDATA%\figma-mcp-server\channel.json) → 自动 channel_join
         ├─ 成功 → 全程无感
         └─ 失败（码已轮换）→ 等人工 join 一次，成功后重新持久化
@@ -192,7 +195,7 @@ Release 工作流（Release 说明由 `--generate-notes` 基于提交自动生�
 定制清单 `pnpm run customizations`（升级 runbook 见本地 .omc/UPSTREAM-UPGRADE.md）。
 
 **自维护组件**：figma-edit-mcp server 端源码已并入主工程，按职责分布在 `src/bridge/`（插件桥进程对）、
-`src/tools/`（45 工具 schema）、`src/protocol/`（频道协议）（上游基线 2.3.3，MIT，LICENSE 在仓库根；
+`src/tools/`（46 工具 schema）、`src/protocol/`（频道协议）（上游基线 2.3.3，MIT，LICENSE 在仓库根；
 定制以 `// figma-mcp-server 定制` 标记，清单 `pnpm run customizations` 生成
 `scripts/CUSTOMIZATIONS.md` 并受 CI 护栏保护；升级 runbook 见本地 `.omc/UPSTREAM-UPGRADE.md`）。
 子进程代码由 `scripts/bundle.mjs` 一并打进 broker.mjs，broker 以 `--fe-child=server|socket` spawn
