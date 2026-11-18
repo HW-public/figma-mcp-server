@@ -171,6 +171,32 @@ const TRANSLATE_CODE_DICT: Record<string, string> = {
     MISSING_SOURCE_INSTANCE_ID: '[中文] 缺少源组件实例 ID：请先 instance_get_overrides 读取当前实例 id，原样传回',
 };
 
+// figma-mcp-server 定制: 风暴读缓存——只读工具名单（src/tools/ 里 annotations.readOnlyHint=true 的全部 9 个，
+// 逐个核对）；不在名单内的一律视为写工具：成功返回后清空整个读缓存（失败不清，数据没变）
+const READ_ONLY_TOOLS = new Set([
+    'node_info',
+    'page_info',
+    'annotation_list',
+    'component_list',
+    'instance_get_overrides',
+    'node_export_visual',
+    'reaction_list',
+    'style_list',
+    'variable_list',
+]);
+
+// figma-mcp-server 定制: 缓存键规范化——递归排序对象 key 后 JSON.stringify，避免键序差异导致 miss
+function stableStringify(value: unknown): string {
+    if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`;
+    if (value !== null && typeof value === 'object') {
+        const entries = Object.entries(value as Record<string, unknown>)
+            .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+            .map(([k, v]) => `${JSON.stringify(k)}:${stableStringify(v)}`);
+        return `{${entries.join(',')}}`;
+    }
+    return JSON.stringify(value) ?? 'undefined';
+}
+
 interface QueueEntry {
     owner: number; // socket id，断开时清理其未执行项
     enqueuedAt: number; // figma-mcp-server 定制: 入队时间，出队时算 waitMs 做拥塞可见
@@ -190,6 +216,9 @@ class Broker {
     private currentChannel: string | null = null;
     private queue: QueueEntry[] = [];
     private draining = false;
+    // figma-mcp-server 定制: 风暴读缓存（TTL 见 config.readOnlyCacheTtlMs，≤0 完全禁用；
+    // 键=tool+规范化args，值=深拷贝结果+timestamp；任何写工具成功即整表清空）
+    private readCache = new Map<string, { value: unknown; timestamp: number }>();
     private lastEmptyAt = Date.now();
     private idleTimer: NodeJS.Timeout | null = null;
 
@@ -467,10 +496,42 @@ class Broker {
         return msg;
     }
 
+    // figma-mcp-server 定制: 给读工具结果注入 fromCache/snapshotAgeMs 元信息；优先注入 structuredContent
+    // （各工具 outputSchema 均 loose catchall，附加键通过校验），无 structuredContent 时退到结果顶层
+    private injectCacheMeta(result: unknown, fromCache: boolean, snapshotAgeMs: number): unknown {
+        if (result !== null && typeof result === 'object') {
+            const env = (result as { structuredContent?: unknown }).structuredContent;
+            const target = env !== null && typeof env === 'object'
+                ? env as Record<string, unknown>
+                : result as Record<string, unknown>;
+            target.fromCache = fromCache;
+            target.snapshotAgeMs = snapshotAgeMs;
+        }
+        return result;
+    }
+
     private async execToolWrapped(name: string, args: Record<string, unknown>): Promise<unknown> {
         // figma-mcp-server 定制: 工具调用审计（FIGMA_MCP_AUDIT_LOG=off 全关，默认开），出入口各一行
         const startedAt = Date.now();
         if (this.config.auditLog) log(this.config, `[call] ${name} ${summarizeForAudit(args)}`);
+        // figma-mcp-server 定制: 风暴读缓存——只读工具先查缓存，命中直接返回深拷贝（防调用方串改缓存）
+        const isReadOnly = READ_ONLY_TOOLS.has(name);
+        const ttl = this.config.readOnlyCacheTtlMs;
+        const cacheKey = isReadOnly && ttl > 0 ? `${name}|${stableStringify(args)}` : null;
+        if (cacheKey) {
+            const hit = this.readCache.get(cacheKey);
+            if (hit) {
+                const age = Date.now() - hit.timestamp;
+                if (age <= ttl) {
+                    const value = this.injectCacheMeta(structuredClone(hit.value), true, age);
+                    if (this.config.auditLog) {
+                        log(this.config, `[ok-cache] ${name} ${Date.now() - startedAt}ms cache=hit age=${age}ms`);
+                    }
+                    return value;
+                }
+                this.readCache.delete(cacheKey); // 过期即清，防内存滞留
+            }
+        }
         try {
             const result = await this.execTool(name, args);
             if ((result as { isError?: boolean }).isError) {
@@ -492,6 +553,14 @@ class Broker {
                 const breakdown = typeof pluginMs === 'number' ? ` (plugin ${pluginMs}ms | 链路 ${Math.max(total - pluginMs, 0)}ms)` : '';
                 log(this.config, `[ok] ${name} ${total}ms${breakdown}`);
             }
+            if (isReadOnly) {
+                // figma-mcp-server 定制: 只读成功结果存深拷贝（注入元信息前先存，缓存保持干净快照）
+                if (cacheKey) this.readCache.set(cacheKey, { value: structuredClone(result), timestamp: Date.now() });
+                return this.injectCacheMeta(result, false, 0);
+            }
+            // figma-mcp-server 定制: 写工具成功（含 batch 内每个写 op、channel_join 换频道）→ 清空整个
+            // 读缓存；joinFailed 等失败语义不清（数据没变，旧快照仍有效）
+            if (!joinFailed) this.readCache.clear();
             return result;
         } catch (e) {
             const message = this.translateError((e as Error).message);
