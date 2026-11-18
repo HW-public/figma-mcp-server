@@ -58,10 +58,23 @@ jobs:
         shell: pwsh
         run: |
           $tag = $env:GITHUB_REF_NAME
-          gh release create $tag `
-            --title "figma-mcp-server $tag" `
-            --generate-notes `
-            "dist/bundle/index.mjs#index.mjs" `
-            "dist/bundle/broker.mjs#broker.mjs" `
-            "plugin/code.js#code.js" `
-            "plugin/manifest.json#manifest.json"
+          # figma-mcp-server 定制: 优先用随仓库维护的 RELEASE_NOTES/<tag>.md 作为发布正文，
+          # 没有对应文件时退化为自动生成（提交历史聚合）
+          $notesFile = "RELEASE_NOTES/$tag.md"
+          if (Test-Path $notesFile) {
+            gh release create $tag `
+              --title "figma-mcp-server $tag" `
+              --notes-file $notesFile `
+              "dist/bundle/index.mjs#index.mjs" `
+              "dist/bundle/broker.mjs#broker.mjs" `
+              "plugin/code.js#code.js" `
+              "plugin/manifest.json#manifest.json"
+          } else {
+            gh release create $tag `
+              --title "figma-mcp-server $tag" `
+              --generate-notes `
+              "dist/bundle/index.mjs#index.mjs" `
+              "dist/bundle/broker.mjs#broker.mjs" `
+              "plugin/code.js#code.js" `
+              "plugin/manifest.json#manifest.json"
+          }
