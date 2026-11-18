@@ -353,6 +353,35 @@ class Broker {
         log(this.config, 'figma-edit-mcp 重试 10 次仍失败，live 通道不可用');
     }
 
+    private childReconnecting = false;
+
+    /** figma-mcp-server 定制: 子进程（--fe-child=server）↔ socket 桥的 WS 是子进程内部维护的，
+     * 桥重拉后旧 WS 永久死亡且子进程自己不重连（实战 2026-11-18：桥自动重拉已自愈，但子进程侧
+     * 仍报 Connection closed，直到 broker 整体重启才恢复）。此处检测到该错误后整体重建子进程：
+     * 复用 connectBridge 的 10 次重试 + 成功后自动重进频道，重建期间并发调用只触发一次。 */
+    private restartChild(): void {
+        if (this.childReconnecting) return;
+        this.childReconnecting = true;
+        this.bridgeState = 'disconnected';
+        log(this.config, 'figma-edit-mcp 子进程 WS 已死，自动重建子进程…');
+        void (async () => {
+            try { await this.mcpClient?.close(); } catch { /* ignore */ }
+            this.mcpClient = null;
+            try {
+                await this.connectBridge();
+            } finally {
+                this.childReconnecting = false;
+            }
+        })();
+    }
+
+    private isDeadChildWs(error: unknown): boolean {
+        // 子进程 WS 死亡的特征签名（区别于插件侧 PLUGIN_PEER_UNAVAILABLE 等瞬时错误——
+        // 那些消息来自桥转发，原文是 "Operation Denied..."，不是裸 "Connection closed"）
+        const msg = error instanceof Error ? error.message : String(error);
+        return msg.includes('Connection closed') || msg.includes('WebSocket was closed');
+    }
+
     private lastJoinPayload: unknown = null;
     // figma-mcp-server 定制: 记录最近一次 join 失败的真实错误信封（子进程 structuredContent 里的
     // errorCode/errorMessage）。失败时由 execTool 透传给客户端，不再把子进程错误吞掉、
@@ -559,7 +588,11 @@ class Broker {
                 // figma-mcp-server 定制: SDK 的 isError 结果提取 content 文本走与 catch 分支相同的
                 // translateError 处理，保持 isError 语义返回给瘦客户端（result 对象自带 isError 字段，
                 // client/live.ts 原样透传 → src/server.ts 原样返回 CallToolResult）
-                const message = this.translateError(extractContentText(result));
+                const rawText = extractContentText(result);
+                // figma-mcp-server 定制: 子进程把内部 WS 错误也包装成 isError 结果返回（不经 throw），
+                // 同样要触发子进程重建
+                if (this.isDeadChildWs(rawText)) this.restartChild();
+                const message = this.translateError(rawText);
                 if (this.config.auditLog) {
                     log(this.config, `[fail] ${name} ${Date.now() - startedAt}ms ${extractErrorCode(message) ?? '-'}: ${message.slice(0, 150)}`);
                 }
@@ -584,6 +617,8 @@ class Broker {
             if (!joinFailed) this.readCache.clear();
             return result;
         } catch (e) {
+            // figma-mcp-server 定制: 子进程 WS 死亡（桥重拉/崩溃）→ 触发子进程整体重建，下次调用即恢复
+            if (this.isDeadChildWs(e)) this.restartChild();
             const message = this.translateError((e as Error).message);
             if (this.config.auditLog) {
                 log(this.config, `[fail] ${name} ${Date.now() - startedAt}ms ${extractErrorCode(message) ?? '-'}: ${message.slice(0, 150)}`);
