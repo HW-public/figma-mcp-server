@@ -353,6 +353,10 @@ figma.ui.onmessage = async (msg: any) => {
                     const sanitized = sanitizeForPostMessage(result);
                     if (sanitized && typeof sanitized === "object" && !Array.isArray(sanitized)) {
                         (sanitized as Record<string, unknown>).durationMs = Date.now() - startedAt;
+                        // figma-mcp-server 定制：回显实际生效的 coordinateSpace（防 AI 漏传参数后无法自查）
+                        if (/^(create_|node_transform)/.test(msg.command)) {
+                            (sanitized as Record<string, unknown>).coordinateSpace = msg.params?.coordinateSpace ?? "parent";
+                        }
                     }
                     figma.ui.postMessage({
                         type: "command-result",

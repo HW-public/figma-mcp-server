@@ -688,7 +688,7 @@ Nothing was deleted. Read each listed consumer's current state with node_info (n
   async function getAbsoluteOffset(node) {
     let offsetX = 0;
     let offsetY = 0;
-    let current = node ? node.parent : null;
+    let current = node;
     while (current && current.type !== "PAGE" && current.type !== "DOCUMENT") {
       if ("x" in current && "y" in current) {
         offsetX += current.x;
@@ -7862,6 +7862,7 @@ Processing annotation ${i + 1}/${annotations.length}:`,
         break;
       case "execute-command":
         state.commandQueue = (state.commandQueue || Promise.resolve()).then(async () => {
+          var _a, _b;
           const startedAt = Date.now();
           const COMMAND_TIMEOUT_MS = 12e4;
           try {
@@ -7874,6 +7875,9 @@ Processing annotation ${i + 1}/${annotations.length}:`,
             const sanitized = sanitizeForPostMessage(result);
             if (sanitized && typeof sanitized === "object" && !Array.isArray(sanitized)) {
               sanitized.durationMs = Date.now() - startedAt;
+              if (/^(create_|node_transform)/.test(msg.command)) {
+                sanitized.coordinateSpace = (_b = (_a = msg.params) == null ? void 0 : _a.coordinateSpace) != null ? _b : "parent";
+              }
             }
             figma.ui.postMessage({
               type: "command-result",

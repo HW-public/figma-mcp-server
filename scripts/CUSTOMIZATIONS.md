@@ -2,7 +2,7 @@
 
 扫描标记：`figma-mcp-server 定制` ｜ 范围：`src/bridge、src/tools、src/protocol、plugin` ｜ 由 `scripts/list-customizations.mjs` 生成
 
-共 107 处：
+共 108 处：
 
 - `src/bridge/server.ts:68` — // figma-mcp-server 定制：供 broker 以 --fe-child=server spawn 自身时路由调用
 - `src/bridge/socket.ts:40` — /** figma-mcp-server 定制：心跳漏计（半开连接检测） */
@@ -87,7 +87,7 @@
 - `src/tools/variable.ts:282` — // figma-mcp-server 定制：handler 返回 deleted/deletedCollection，无 message
 - `src/protocol/errorCodes.ts:133` — // figma-mcp-server 定制：CHANNEL_NOT_FOUND 为死码——socket 层拒连已改用 PLUGIN_PEER_UNAVAILABLE，全仓库无产生点，保留定义仅作 ratified 契约存档
 - `src/protocol/version.ts:1` — // figma-mcp-server 定制版（上游 readRootPackageMetadata 已删）：频道握手的 serverVersion 必须和
-- `plugin/code.js:7985` — // figma-mcp-server 定制：create_section 分发
+- `plugin/code.js:7989` — // figma-mcp-server 定制：create_section 分发
 - `plugin/handlers/componentHandlers.ts:341` — // figma-mcp-server 定制：maxDimension 上限保护——防止误传大 scale 导出 4x 巨图写爆磁盘
 - `plugin/handlers/componentHandlers.ts:361` — // figma-mcp-server 定制：按 maxDimension 收敛 scale（raster 格式）
 - `plugin/handlers/nodeCreators.ts:91` — // figma-mcp-server 定制：coordinateSpace=canvas 时把画布绝对坐标换算成父级相对坐标（默认 parent=旧行为，将切换 canvas 默认另行通知）
@@ -109,5 +109,6 @@
 - `plugin/src/main.ts:144` — // figma-mcp-server 定制：strictNames===false 时跳过父节点名校验
 - `plugin/src/main.ts:337` — // figma-mcp-server 定制：插件侧执行计时，随 result 回传，供 broker 审计行做耗时分解
 - `plugin/src/main.ts:339` — // figma-mcp-server 定制：单命令超时——Figma API 偶发永不返回（如网络中断时），
-- `plugin/src/main.ts:488` — // figma-mcp-server 定制：create_section 分发
+- `plugin/src/main.ts:356` — // figma-mcp-server 定制：回显实际生效的 coordinateSpace（防 AI 漏传参数后无法自查）
+- `plugin/src/main.ts:492` — // figma-mcp-server 定制：create_section 分发
 - `plugin/utils/nodeUtils.ts:368` — * figma-mcp-server 定制：计算某节点在画布上的绝对原点。

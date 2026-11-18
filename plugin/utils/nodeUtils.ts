@@ -372,7 +372,8 @@ export function describeCreatorSurvivorParent(
 export async function getAbsoluteOffset(node: any): Promise<{ x: number; y: number }> {
     let offsetX = 0;
     let offsetY = 0;
-    let current = node ? node.parent : null;
+    // 从 node 自身开始累加（调用方传 parent 时，返回的是 parent 的画布绝对原点）
+    let current = node;
     while (current && current.type !== 'PAGE' && current.type !== 'DOCUMENT') {
         if ('x' in current && 'y' in current) {
             offsetX += current.x;
