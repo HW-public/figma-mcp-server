@@ -213,6 +213,8 @@ class Broker {
     private mcpClient: Client | null = null;
     private childTools: Array<{ name: string; description?: string; inputSchema?: unknown }> = [];
     private bridgeState: 'connected' | 'disconnected' = 'disconnected';
+    private shuttingDown = false;
+    private socketRespawnTimer: NodeJS.Timeout | null = null;
     private currentChannel: string | null = null;
     private queue: QueueEntry[] = [];
     private draining = false;
@@ -227,7 +229,6 @@ class Broker {
     }
 
     async start(): Promise<void> {
-        writeFileSync(this.config.brokerPidFile, String(process.pid));
         log(this.config, `figma-mcp-broker v${VERSION} 启动（state: ${this.config.stateDir}）`);
 
         // 先抢端口再拉子进程：并发唤醒场景下，抢不到 3056 的实例必须空手退出，
@@ -240,6 +241,9 @@ class Broker {
                 resolveListen();
             });
         });
+        // figma-mcp-server 定制: pid 必须在抢端口成功后再写——并发唤醒的落败者此前也写 pid 文件，
+        // 先写后抢会留下指向已退出进程的陈旧 pid，瘦客户端的存活探针因此失效
+        writeFileSync(this.config.brokerPidFile, String(process.pid));
         log(this.config, `监听 127.0.0.1:${this.config.brokerPort}，token=${this.token.slice(0, 6)}…`);
 
         await this.spawnSocket();
@@ -285,10 +289,27 @@ class Broker {
                 stdio: ['ignore', 'ignore', 'pipe'],
                 windowsHide: true,
             });
-            this.socketProc.stderr?.on('data', (d) => log(this.config, `[socket] ${String(d).trim()}`));
+            // figma-mcp-server 定制: 桥退出自动重拉——桥一旦死掉此前是永久 Not connected，只能整 broker
+            // 重启（实战 2026-11-18 桥 code=1 退出后插件永远连不上，设计会话全部卡死才发现）；
+            // 唯一不重拉的场景：stderr 带 EADDRINUSE = 端口被别的桥占用，重拉只会互相打架
+            let lastStderr = '';
+            this.socketProc.stderr?.on('data', (d) => {
+                lastStderr = String(d).trim();
+                log(this.config, `[socket] ${lastStderr}`);
+            });
             this.socketProc.on('exit', (code) => {
                 log(this.config, `socket 桥退出 code=${code}`);
                 this.bridgeState = 'disconnected';
+                if (this.shuttingDown) return;
+                if (lastStderr.includes('EADDRINUSE')) {
+                    log(this.config, 'socket 桥端口被占用（已有其他桥在跑），不再重拉');
+                    return;
+                }
+                log(this.config, 'socket 桥 2s 后自动重拉');
+                this.socketRespawnTimer = setTimeout(() => {
+                    this.socketRespawnTimer = null;
+                    this.spawnSocket();
+                }, 2000);
             });
             log(this.config, `socket 桥已拉起 :${this.config.bridgePort}`);
         } catch (e) {
@@ -915,7 +936,9 @@ class Broker {
     }
 
     shutdown(code: number): void {
+        this.shuttingDown = true;
         if (this.idleTimer) clearInterval(this.idleTimer);
+        if (this.socketRespawnTimer) clearTimeout(this.socketRespawnTimer);
         try { this.mcpClient?.close(); } catch { /* ignore */ }
         this.socketProc?.kill();
         try { unlinkSync(this.config.brokerPidFile); } catch { /* ignore */ }
