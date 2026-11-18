@@ -6714,6 +6714,9 @@ Processing annotation ${i + 1}/${annotations.length}:`,
     // Default port
     channel: null,
     // persisted channel code; stable across restarts
+    // figma-mcp-server 定制: 多频道——clientStorage 跨窗口共享，单码会在两个 Figma 窗口撞车；
+    // 改为按文档名隔离：文档名 → 频道码，窗口各拿各的码
+    channelsByDoc: {},
     scopeRootId: null,
     allowEditNode: false,
     // false | "page" | "node"
@@ -7902,15 +7905,26 @@ Processing annotation ${i + 1}/${annotations.length}:`,
   figma.on("run", ({ command }) => {
   });
   function updateSettings(settings) {
+    var _a, _b;
     if (settings.serverPort) {
       state.serverPort = settings.serverPort;
     }
+    const docKey = figma.root.document.name || "untitled";
+    const incoming = settings.channels && typeof settings.channels === "object" ? settings.channels : {};
+    const map = { ...(_a = state.channelsByDoc) != null ? _a : {}, ...incoming };
     if (settings.channel) {
-      state.channel = settings.channel;
+      if (!Object.values(map).includes(settings.channel)) {
+        map[docKey] = settings.channel;
+      }
     }
+    state.channelsByDoc = map;
+    state.channel = (_b = map[docKey]) != null ? _b : null;
     figma.clientStorage.setAsync("settings", {
       serverPort: state.serverPort,
-      channel: state.channel
+      channel: state.channel,
+      // 最近使用码（兼容旧读法）
+      channels: map
+      // 文档名 → 频道码（多频道隔离的权威数据）
     });
   }
   async function handleCommand(command, params) {

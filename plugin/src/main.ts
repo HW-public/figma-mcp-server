@@ -47,6 +47,9 @@ import { parseNodeIdFromUrl } from '../utils/scopeLink.js';
 const state: any = {
     serverPort: 3055, // Default port
     channel: null as string | null, // persisted channel code; stable across restarts
+    // figma-mcp-server 定制: 多频道——clientStorage 跨窗口共享，单码会在两个 Figma 窗口撞车；
+    // 改为按文档名隔离：文档名 → 频道码，窗口各拿各的码
+    channelsByDoc: {} as Record<string, string>,
     scopeRootId: null,
     allowEditNode: false, // false | "page" | "node"
     allowEditVariable: false,
@@ -390,13 +393,24 @@ function updateSettings(settings: any) {
     if (settings.serverPort) {
         state.serverPort = settings.serverPort;
     }
+    // figma-mcp-server 定制: 多频道——按文档名隔离频道码（见 state.channelsByDoc 注释）
+    const docKey = figma.root.document.name || "untitled";
+    const incoming = settings.channels && typeof settings.channels === "object" ? settings.channels : {};
+    const map: Record<string, string> = { ...(state.channelsByDoc ?? {}), ...incoming };
     if (settings.channel) {
-        state.channel = settings.channel;
+        // 旧版单码数据迁移：仅当该码未被其他文档占用时才写入本文档槽位，
+        // 否则第二个窗口会把第一个窗口的码抄走（撞车根源）
+        if (!Object.values(map).includes(settings.channel)) {
+            map[docKey] = settings.channel;
+        }
     }
+    state.channelsByDoc = map;
+    state.channel = map[docKey] ?? null; // 无本文档码 → null，UI 侧生成新码并回写
 
     figma.clientStorage.setAsync("settings", {
         serverPort: state.serverPort,
-        channel: state.channel,
+        channel: state.channel, // 最近使用码（兼容旧读法）
+        channels: map, // 文档名 → 频道码（多频道隔离的权威数据）
     });
 }
 
