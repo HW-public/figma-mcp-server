@@ -1,4 +1,5 @@
 import { WebSocket as WsWebSocket } from "ws";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { v4 as uuidv4 } from "uuid";
 import { normalizeNodeId, normalizeNodeIds } from "./utils.js";
 import { logger } from "./logger.js";
@@ -13,6 +14,14 @@ import type {
     ChannelJoinResult as ProtocolChannelJoinResult,
     ChannelLeaveResult,
 } from "../protocol/channelProtocol.js";
+
+// figma-mcp-server 定制：多频道——handler 重建 params 时会把顶层 channel 丢掉（如
+// sendCommandToFigma("page_info", { pageIds })），跨频道路由因此失效、回落主频道。
+// registerAllTools 的 wrappedCb 把 zod 解析后的 channel 放进这个 ALS；
+// sendCommandToFigma 取 params.channel ?? ALS store 作显式路由目标。
+// 必须用 ALS 而非模块级变量：broker 每频道队列并行后，子进程并发处理多频道命令，
+// 模块级变量会让两个频道互相串路由。
+export const channelRoutingAls = new AsyncLocalStorage<string>();
 
 // Prefer the runtime's native WebSocket (bun, and node >= 22) over the `ws`
 // package's client. The `ws` client mishandles the HTTP 101 upgrade under bun:
@@ -731,10 +740,12 @@ export function sendCommandToFigma(
         const requiresChannel = command !== "join";
         const paramsRecord = (params ?? {}) as Record<string, unknown>;
         // figma-mcp-server 定制：多频道——params.channel 为显式路由目标（broker 按
-        // args.channel/会话绑定/默认频道解析后注入）；未显式指定回落 primaryChannel
+        // args.channel/会话绑定/默认频道解析后注入）；未显式指定回落 ALS（wrappedCb
+        // 从 zod 解析结果注入，防 handler 重建 params 时丢 channel），再缺省回落 primaryChannel
+        const alsChannel = channelRoutingAls.getStore();
         const explicitChannel = typeof paramsRecord.channel === "string" && paramsRecord.channel.length > 0
             ? paramsRecord.channel
-            : undefined;
+            : (typeof alsChannel === "string" && alsChannel.length > 0 ? alsChannel : undefined);
         const targetChannel = requiresChannel
             ? (explicitChannel ?? primaryChannel)
             : null;

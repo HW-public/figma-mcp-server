@@ -2,6 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { errorEnvelope } from "./_result.js";
 import { describeThrownForToolBoundary } from "./_error.js";
+import { channelRoutingAls } from "../bridge/client.js";
 import { registerPageTools } from "./page.js";
 import { registerNodeTools } from "./node.js";
 import { registerCreateTools } from "./create.js";
@@ -379,7 +380,11 @@ export function withStrictInputSchemas(server: McpServer): McpServer {
                     }
                     const wrappedCb = async (args: any, extra: any) => {
                         try {
-                            return await cb(args, extra);
+                            // figma-mcp-server 定制：多频道——handler 重建 params 时会丢掉顶层
+                            // channel（路由目标），此处把 zod 解析出的 channel 放进 ALS，
+                            // sendCommandToFigma 用它兜底路由（并发安全，见 channelRoutingAls 注释）
+                            const routeChannel = typeof args?.channel === "string" ? args.channel : "";
+                            return await channelRoutingAls.run(routeChannel, () => cb(args, extra));
                         } catch (error: any) {
                             // A thrown value is untrusted input. Hostile Proxies
                             // can reject code/message/details reads as well as
