@@ -58,6 +58,10 @@ jobs:
         shell: pwsh
         run: |
           $tag = $env:GITHUB_REF_NAME
+          # figma-mcp-server 定制: 同 tag 重发（覆盖资产/更新正文）时先删旧 Release，
+          # 否则 gh release create 撞 "already exists" 直接失败
+          gh release view $tag 2>$null
+          if ($LASTEXITCODE -eq 0) { gh release delete $tag --yes }
           # figma-mcp-server 定制: 优先用随仓库维护的 RELEASE_NOTES/<tag>.md 作为发布正文，
           # 没有对应文件时退化为自动生成（提交历史聚合）
           $notesFile = "RELEASE_NOTES/$tag.md"
