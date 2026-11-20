@@ -1,4 +1,4 @@
-import { loadConfig, persistChannel } from './config.js';
+import { loadConfig } from './config.js';
 import { LiveChannel } from './client/live.js';
 import { createServer, startStdioServer } from './server.js';
 
@@ -10,10 +10,8 @@ async function main(): Promise<void> {
     }
 
     // 瘦客户端：连接常驻 broker（不在则按需拉起）。broker 是全机唯一 Figma 链路 owner，
-    // 多会话并发安全由 broker 侧 FIFO 队列保证
-    const live = new LiveChannel(config, {
-        onChannelPersist: (channel) => persistChannel(config.channelFile, channel),
-    });
+    // 多会话并发安全由 broker 侧每频道 FIFO 保证；channel.json 也由 broker 统一维护（含频道池）
+    const live = new LiveChannel(config, {});
     const liveReady = live.start().catch((e) => {
         console.error(`[live] 启动异常: ${(e as Error).message}`);
     });

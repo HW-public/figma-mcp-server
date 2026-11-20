@@ -27,7 +27,7 @@ export class LiveChannel {
 
     constructor(
         private config: Config,
-        private opts: { onChannelPersist: (channel: string) => void },
+        private opts: { onChannelPersist?: (channel: string) => void },
     ) {}
 
     get isBridgeConnected(): boolean {
@@ -228,14 +228,8 @@ export class LiveChannel {
     }
 
     async callTool(name: string, args: Record<string, unknown>): Promise<unknown> {
-        if (name === 'channel_join') {
-            const channel = (args as { channel?: string }).channel;
-            // figma-mcp-server 定制: 多频道——keepDefault:true（只进池不切默认）不写持久化，
-            // 否则任意会话 join 新码都会篡改机器级默认频道
-            if (channel && (args as { keepDefault?: unknown }).keepDefault !== true) {
-                this.opts.onChannelPersist(channel);
-            }
-        }
+        // figma-mcp-server 定制: 频道持久化由 broker 统一负责（含池），瘦客户端不再写 channel.json，
+        // 避免第二个写手把 broker 写入的 pool 覆盖成裸 {channel}
         return this.request({ type: 'tools/call', name, args });
     }
 

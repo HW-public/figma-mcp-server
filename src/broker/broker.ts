@@ -17,7 +17,7 @@ import { randomBytes } from 'node:crypto';
 import { dirname, join } from 'node:path';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
-import { loadConfig, persistChannel, type Config } from '../config.js';
+import { loadConfig, persistChannelState, type Config } from '../config.js';
 import { encodeFrame, FrameDecoder } from './protocol.js';
 
 const APP_VERSION = (globalThis as Record<string, unknown>).__APP_VERSION__ as string ?? '0.0.0-dev';
@@ -224,6 +224,9 @@ class Broker {
     private socketRespawnTimer: NodeJS.Timeout | null = null;
     /** 默认频道：不带 channel 且本会话无绑定时的路由目标（"切默认"的 join 会更新它） */
     private currentChannel: string | null = null;
+    // figma-mcp-server 定制: 频道池持久化状态（码→文档名）——任何成功 join 都更新，
+    // broker 重启后据此自动接回全部频道（见 connectBridge 的池重连）
+    private channelPool: Record<string, string>;
     // figma-mcp-server 定制：多频道——已加入频道池 + 频道码→文档名映射（join ack 捕获，拿不到为 null）
     private joinedChannels = new Set<string>();
     private documentNames = new Map<string, string | null>();
@@ -241,6 +244,7 @@ class Broker {
 
     constructor(private config: Config) {
         this.token = ensureToken(config);
+        this.channelPool = { ...config.channelPool };
     }
 
     async start(): Promise<void> {
@@ -357,6 +361,12 @@ class Broker {
                 if (this.config.channel) {
                     await this.joinChannel(this.config.channel);
                 }
+                // figma-mcp-server 定制: 频道池自动接回——重启/升级后凭持久化的 pool
+                // 逐个重 join：插件在线的接回（文档名随之刷新），不在线的跳过等下次 channel_join
+                for (const code of Object.keys(this.channelPool)) {
+                    if (this.joinedChannels.has(code)) continue;
+                    await this.joinChannel(code, { persist: false });
+                }
                 return;
             } catch (e) {
                 log(this.config, `figma-edit-mcp 连接失败（第 ${attempt}/10 次）: ${(e as Error).message}`);
@@ -449,11 +459,13 @@ class Broker {
                 // figma-mcp-server 定制: 从 join payload 捕获文档名（插件 get_connect_payload 上报）；
                 // 拿不到记 null，channel_list/join 返回值里注明
                 const env = (result as { structuredContent?: Record<string, unknown> } | null)?.structuredContent;
-                this.documentNames.set(channel, typeof env?.documentName === 'string' ? env.documentName : null);
-                if (opts.persist !== false) {
-                    this.currentChannel = channel;
-                    persistChannel(this.config.channelFile, channel);
-                }
+                const docName = typeof env?.documentName === 'string' ? env.documentName : null;
+                this.documentNames.set(channel, docName);
+                // figma-mcp-server 定制: 池持久化——任何成功 join 都更新 pool 并落盘；
+                // keepDefault 只控制"是否切默认频道"，pool 照存。重启后凭 pool 自动接回
+                if (docName) this.channelPool[channel] = docName;
+                if (opts.persist !== false) this.currentChannel = channel;
+                persistChannelState(this.config.channelFile, this.currentChannel, this.channelPool);
                 log(this.config, `频道 '${channel}' 已加入（池 ${this.joinedChannels.size} 个${opts.persist === false ? '，keepDefault' : ''}）`);
                 return true;
             }
