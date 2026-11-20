@@ -2,7 +2,7 @@
 
 扫描标记：`figma-mcp-server 定制` ｜ 范围：`src/bridge、src/tools、src/protocol、plugin` ｜ 由 `scripts/list-customizations.mjs` 生成
 
-共 143 处：
+共 146 处：
 
 - `src/bridge/client.ts:18` — // figma-mcp-server 定制：多频道——handler 重建 params 时会把顶层 channel 丢掉（如
 - `src/bridge/client.ts:215` — // figma-mcp-server 定制：多频道——单连接可绑定多个频道（broker 多频道池）。
@@ -120,7 +120,7 @@
 - `src/protocol/errorCodes.ts:133` — // figma-mcp-server 定制：CHANNEL_NOT_FOUND 为死码——socket 层拒连已改用 PLUGIN_PEER_UNAVAILABLE，全仓库无产生点，保留定义仅作 ratified 契约存档
 - `src/protocol/version.ts:1` — // figma-mcp-server 定制版（上游 readRootPackageMetadata 已删）：频道握手的 serverVersion 必须和
 - `plugin/code.js:6717` — // figma-mcp-server 定制: 多频道——clientStorage 跨窗口共享，单码会在两个 Figma 窗口撞车；
-- `plugin/code.js:8003` — // figma-mcp-server 定制：create_section 分发
+- `plugin/code.js:8074` — // figma-mcp-server 定制：create_section 分发
 - `plugin/handlers/componentHandlers.ts:341` — // figma-mcp-server 定制：maxDimension 上限保护——防止误传大 scale 导出 4x 巨图写爆磁盘
 - `plugin/handlers/componentHandlers.ts:361` — // figma-mcp-server 定制：按 maxDimension 收敛 scale（raster 格式）
 - `plugin/handlers/nodeCreators.ts:91` — // figma-mcp-server 定制：coordinateSpace=canvas 时把画布绝对坐标换算成父级相对坐标（默认 parent=旧行为，将切换 canvas 默认另行通知）
@@ -141,9 +141,12 @@
 - `plugin/src/main.ts:50` — // figma-mcp-server 定制: 多频道——clientStorage 跨窗口共享，单码会在两个 Figma 窗口撞车；
 - `plugin/src/main.ts:130` — // figma-mcp-server 定制：strictNames===false 时跳过节点名校验（scope/locked/instance 等其他校验保留）
 - `plugin/src/main.ts:147` — // figma-mcp-server 定制：strictNames===false 时跳过父节点名校验
-- `plugin/src/main.ts:340` — // figma-mcp-server 定制：插件侧执行计时，随 result 回传，供 broker 审计行做耗时分解
-- `plugin/src/main.ts:342` — // figma-mcp-server 定制：单命令超时——Figma API 偶发永不返回（如网络中断时），
-- `plugin/src/main.ts:359` — // figma-mcp-server 定制：回显实际生效的 coordinateSpace（防 AI 漏传参数后无法自查）
-- `plugin/src/main.ts:396` — // figma-mcp-server 定制: 多频道——按文档名隔离频道码（见 state.channelsByDoc 注释）
-- `plugin/src/main.ts:506` — // figma-mcp-server 定制：create_section 分发
+- `plugin/src/main.ts:269` — // figma-mcp-server 定制: 频道码解析主责在 main——UI 只消费不生成，
+- `plugin/src/main.ts:343` — // figma-mcp-server 定制：插件侧执行计时，随 result 回传，供 broker 审计行做耗时分解
+- `plugin/src/main.ts:345` — // figma-mcp-server 定制：单命令超时——Figma API 偶发永不返回（如网络中断时），
+- `plugin/src/main.ts:362` — // figma-mcp-server 定制：回显实际生效的 coordinateSpace（防 AI 漏传参数后无法自查）
+- `plugin/src/main.ts:399` — // figma-mcp-server 定制: 频道码不再由 UI 上报驱动——解析主责在 resolveChannelForDocument。
+- `plugin/src/main.ts:414` — // figma-mcp-server 定制: 把当前设置写回 clientStorage（best-effort 缓存；
+- `plugin/src/main.ts:435` — /** figma-mcp-server 定制: 解析本文档的频道码（权威=文档内插件数据，跟文件走：
+- `plugin/src/main.ts:583` — // figma-mcp-server 定制：create_section 分发
 - `plugin/utils/nodeUtils.ts:368` — * figma-mcp-server 定制：计算某节点在画布上的绝对原点。

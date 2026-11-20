@@ -265,19 +265,22 @@ figma.ui.onmessage = async (msg: any) => {
         case "update-settings":
             updateSettings(msg);
             break;
-        case "get-settings":
-            // UI 启动时拉取持久化设置（端口 + 固定频道码）
-            figma.clientStorage.getAsync("settings").then((saved: any) => {
-                if (saved) updateSettings(saved);
-                figma.ui.postMessage({
-                    type: "init-settings",
-                    settings: {
-                        serverPort: state.serverPort,
-                        channel: state.channel,
-                    },
-                });
+        case "get-settings": {
+            // figma-mcp-server 定制: 频道码解析主责在 main——UI 只消费不生成，
+            // 消除"UI 在 init-settings 到达前连socket 自生新码"的时序竞争。
+            // 权威来源=文档内插件数据（setPluginData，跟文件走：改名单/清 clientStorage 都不丢）；
+            // clientStorage 的 channels 映射降级为迁移来源/缓存。
+            const restored = await resolveChannelForDocument();
+            figma.ui.postMessage({
+                type: "init-settings",
+                settings: {
+                    serverPort: state.serverPort,
+                    channel: state.channel,
+                    restored,
+                },
             });
             break;
+        }
         case "notify":
             notifyBestEffort(msg.message);
             break;
@@ -393,25 +396,99 @@ function updateSettings(settings: any) {
     if (settings.serverPort) {
         state.serverPort = settings.serverPort;
     }
-    // figma-mcp-server 定制: 多频道——按文档名隔离频道码（见 state.channelsByDoc 注释）
-    const docKey = figma.root.document.name || "untitled";
-    const incoming = settings.channels && typeof settings.channels === "object" ? settings.channels : {};
-    const map: Record<string, string> = { ...(state.channelsByDoc ?? {}), ...incoming };
-    if (settings.channel) {
-        // 旧版单码数据迁移：仅当该码未被其他文档占用时才写入本文档槽位，
-        // 否则第二个窗口会把第一个窗口的码抄走（撞车根源）
+    // figma-mcp-server 定制: 频道码不再由 UI 上报驱动——解析主责在 resolveChannelForDocument。
+    // 此处仅做 legacy 单码的被动合并（老版本插件写入数据的迁移用）。
+    if (settings.channel && typeof settings.channel === "string") {
+        const key = figma.root.document.name || "untitled";
+        const map = state.channelsByDoc ?? {};
         if (!Object.values(map).includes(settings.channel)) {
-            map[docKey] = settings.channel;
+            map[key] = settings.channel;
+            state.channelsByDoc = map;
+            // 防御纵深：UI 兜底路径生成的码也写进文档内（正常流程走不到这里）
+            try { figma.root.setPluginData("fe-channel", settings.channel); } catch { /* 只读文档忽略 */ }
+            void persistSettings();
         }
     }
-    state.channelsByDoc = map;
-    state.channel = map[docKey] ?? null; // 无本文档码 → null，UI 侧生成新码并回写
+}
 
-    figma.clientStorage.setAsync("settings", {
+// figma-mcp-server 定制: 把当前设置写回 clientStorage（best-effort 缓存；
+// 频道码的权威数据在文档内插件数据，clientStorage 丢了对频道稳定性无影响）
+function persistSettings(): Promise<void> {
+    return figma.clientStorage.setAsync("settings", {
         serverPort: state.serverPort,
-        channel: state.channel, // 最近使用码（兼容旧读法）
-        channels: map, // 文档名 → 频道码（多频道隔离的权威数据）
+        channel: state.channel,
+        channels: state.channelsByDoc ?? {},
+    }).catch((e: any) => {
+        console.warn("[channel] clientStorage 写入失败（不影响使用，权威数据在文档内）:", e?.message ?? e);
     });
+}
+
+function generateChannelCode(): string {
+    const characters = "abcdefghjkmnoprstuvxyz023456789";
+    let result = "";
+    for (let i = 0; i < 4; i++) {
+        result += characters.charAt(Math.floor(Math.random() * characters.length));
+    }
+    return result;
+}
+
+/** figma-mcp-server 定制: 解析本文档的频道码（权威=文档内插件数据，跟文件走：
+ *  改名单、清 clientStorage 都不丢）。返回 true=恢复既有码，false=本次新生成。 */
+async function resolveChannelForDocument(): Promise<boolean> {
+    const key = figma.root.document.name || "untitled";
+    // 先加载 clientStorage 缓存（迁移来源），失败不阻塞
+    try {
+        const saved: any = await figma.clientStorage.getAsync("settings");
+        if (saved?.channels && typeof saved.channels === "object") {
+            state.channelsByDoc = { ...(state.channelsByDoc ?? {}), ...saved.channels };
+        } else if (saved?.channel && typeof saved.channel === "string") {
+            state.channelsByDoc = state.channelsByDoc ?? {};
+        }
+    } catch { /* 读取失败按无缓存处理 */ }
+    // 1) 文档内插件数据——权威来源
+    let code = "";
+    try {
+        code = figma.root.getPluginData("fe-channel");
+    } catch { /* 只读失败按无数据处理 */ }
+    if (code) {
+        state.channel = code;
+        const map = state.channelsByDoc ?? {};
+        map[key] = code;
+        state.channelsByDoc = map;
+        await persistSettings();
+        return true;
+    }
+    // 2) clientStorage 映射 / legacy 单码迁移
+    code = (state.channelsByDoc ?? {})[key] ?? "";
+    if (!code) {
+        try {
+            const saved: any = await figma.clientStorage.getAsync("settings");
+            const legacy = typeof saved?.channel === "string" ? saved.channel : "";
+            if (legacy && !Object.values(state.channelsByDoc ?? {}).includes(legacy)) code = legacy;
+        } catch { /* 读取失败按无数据处理 */ }
+    }
+    if (!code) {
+        // 3) 新生成 + 双写（文档内权威 + storage 缓存）
+        code = generateChannelCode();
+        state.channel = code;
+        try {
+            figma.root.setPluginData("fe-channel", code);
+        } catch (e: any) {
+            console.warn("[channel] setPluginData 失败（只读文档？），降级 clientStorage-only:", e?.message ?? e);
+        }
+        const map = state.channelsByDoc ?? {};
+        map[key] = code;
+        state.channelsByDoc = map;
+        await persistSettings();
+        return false;
+    }
+    // 迁移命中：写回文档内，下次起走权威路径
+    state.channel = code;
+    try {
+        figma.root.setPluginData("fe-channel", code);
+    } catch { /* 只读文档降级 storage-only */ }
+    await persistSettings();
+    return true;
 }
 
 // Handle commands from UI

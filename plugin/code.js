@@ -7799,18 +7799,18 @@ Processing annotation ${i + 1}/${annotations.length}:`,
       case "update-settings":
         updateSettings(msg);
         break;
-      case "get-settings":
-        figma.clientStorage.getAsync("settings").then((saved) => {
-          if (saved) updateSettings(saved);
-          figma.ui.postMessage({
-            type: "init-settings",
-            settings: {
-              serverPort: state.serverPort,
-              channel: state.channel
-            }
-          });
+      case "get-settings": {
+        const restored = await resolveChannelForDocument();
+        figma.ui.postMessage({
+          type: "init-settings",
+          settings: {
+            serverPort: state.serverPort,
+            channel: state.channel,
+            restored
+          }
         });
         break;
+      }
       case "notify":
         notifyBestEffort(msg.message);
         break;
@@ -7905,27 +7905,98 @@ Processing annotation ${i + 1}/${annotations.length}:`,
   figma.on("run", ({ command }) => {
   });
   function updateSettings(settings) {
-    var _a, _b;
+    var _a;
     if (settings.serverPort) {
       state.serverPort = settings.serverPort;
     }
-    const docKey = figma.root.document.name || "untitled";
-    const incoming = settings.channels && typeof settings.channels === "object" ? settings.channels : {};
-    const map = { ...(_a = state.channelsByDoc) != null ? _a : {}, ...incoming };
-    if (settings.channel) {
+    if (settings.channel && typeof settings.channel === "string") {
+      const key = figma.root.document.name || "untitled";
+      const map = (_a = state.channelsByDoc) != null ? _a : {};
       if (!Object.values(map).includes(settings.channel)) {
-        map[docKey] = settings.channel;
+        map[key] = settings.channel;
+        state.channelsByDoc = map;
+        try {
+          figma.root.setPluginData("fe-channel", settings.channel);
+        } catch (e) {
+        }
+        void persistSettings();
       }
     }
-    state.channelsByDoc = map;
-    state.channel = (_b = map[docKey]) != null ? _b : null;
-    figma.clientStorage.setAsync("settings", {
+  }
+  function persistSettings() {
+    var _a;
+    return figma.clientStorage.setAsync("settings", {
       serverPort: state.serverPort,
       channel: state.channel,
-      // 最近使用码（兼容旧读法）
-      channels: map
-      // 文档名 → 频道码（多频道隔离的权威数据）
+      channels: (_a = state.channelsByDoc) != null ? _a : {}
+    }).catch((e) => {
+      var _a2;
+      console.warn("[channel] clientStorage \u5199\u5165\u5931\u8D25\uFF08\u4E0D\u5F71\u54CD\u4F7F\u7528\uFF0C\u6743\u5A01\u6570\u636E\u5728\u6587\u6863\u5185\uFF09:", (_a2 = e == null ? void 0 : e.message) != null ? _a2 : e);
     });
+  }
+  function generateChannelCode() {
+    const characters = "abcdefghjkmnoprstuvxyz023456789";
+    let result = "";
+    for (let i = 0; i < 4; i++) {
+      result += characters.charAt(Math.floor(Math.random() * characters.length));
+    }
+    return result;
+  }
+  async function resolveChannelForDocument() {
+    var _a, _b, _c, _d, _e, _f, _g, _h;
+    const key = figma.root.document.name || "untitled";
+    try {
+      const saved = await figma.clientStorage.getAsync("settings");
+      if ((saved == null ? void 0 : saved.channels) && typeof saved.channels === "object") {
+        state.channelsByDoc = { ...(_a = state.channelsByDoc) != null ? _a : {}, ...saved.channels };
+      } else if ((saved == null ? void 0 : saved.channel) && typeof saved.channel === "string") {
+        state.channelsByDoc = (_b = state.channelsByDoc) != null ? _b : {};
+      }
+    } catch (e) {
+    }
+    let code = "";
+    try {
+      code = figma.root.getPluginData("fe-channel");
+    } catch (e) {
+    }
+    if (code) {
+      state.channel = code;
+      const map = (_c = state.channelsByDoc) != null ? _c : {};
+      map[key] = code;
+      state.channelsByDoc = map;
+      await persistSettings();
+      return true;
+    }
+    code = (_e = ((_d = state.channelsByDoc) != null ? _d : {})[key]) != null ? _e : "";
+    if (!code) {
+      try {
+        const saved = await figma.clientStorage.getAsync("settings");
+        const legacy = typeof (saved == null ? void 0 : saved.channel) === "string" ? saved.channel : "";
+        if (legacy && !Object.values((_f = state.channelsByDoc) != null ? _f : {}).includes(legacy)) code = legacy;
+      } catch (e) {
+      }
+    }
+    if (!code) {
+      code = generateChannelCode();
+      state.channel = code;
+      try {
+        figma.root.setPluginData("fe-channel", code);
+      } catch (e) {
+        console.warn("[channel] setPluginData \u5931\u8D25\uFF08\u53EA\u8BFB\u6587\u6863\uFF1F\uFF09\uFF0C\u964D\u7EA7 clientStorage-only:", (_g = e == null ? void 0 : e.message) != null ? _g : e);
+      }
+      const map = (_h = state.channelsByDoc) != null ? _h : {};
+      map[key] = code;
+      state.channelsByDoc = map;
+      await persistSettings();
+      return false;
+    }
+    state.channel = code;
+    try {
+      figma.root.setPluginData("fe-channel", code);
+    } catch (e) {
+    }
+    await persistSettings();
+    return true;
   }
   async function handleCommand(command, params) {
     var _a, _b;
