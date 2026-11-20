@@ -399,7 +399,7 @@ function updateSettings(settings: any) {
     // figma-mcp-server 定制: 频道码不再由 UI 上报驱动——解析主责在 resolveChannelForDocument。
     // 此处仅做 legacy 单码的被动合并（老版本插件写入数据的迁移用）。
     if (settings.channel && typeof settings.channel === "string") {
-        const key = figma.root.document.name || "untitled";
+        const key = figma.root.name || "untitled";
         const map = state.channelsByDoc ?? {};
         if (!Object.values(map).includes(settings.channel)) {
             map[key] = settings.channel;
@@ -435,7 +435,7 @@ function generateChannelCode(): string {
 /** figma-mcp-server 定制: 解析本文档的频道码（权威=文档内插件数据，跟文件走：
  *  改名单、清 clientStorage 都不丢）。返回 true=恢复既有码，false=本次新生成。 */
 async function resolveChannelForDocument(): Promise<boolean> {
-    const key = figma.root.document.name || "untitled";
+    const key = figma.root.name || "untitled";
     // 先加载 clientStorage 缓存（迁移来源），失败不阻塞
     try {
         const saved: any = await figma.clientStorage.getAsync("settings");

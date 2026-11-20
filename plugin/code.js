@@ -7910,7 +7910,7 @@ Processing annotation ${i + 1}/${annotations.length}:`,
       state.serverPort = settings.serverPort;
     }
     if (settings.channel && typeof settings.channel === "string") {
-      const key = figma.root.document.name || "untitled";
+      const key = figma.root.name || "untitled";
       const map = (_a = state.channelsByDoc) != null ? _a : {};
       if (!Object.values(map).includes(settings.channel)) {
         map[key] = settings.channel;
@@ -7944,7 +7944,7 @@ Processing annotation ${i + 1}/${annotations.length}:`,
   }
   async function resolveChannelForDocument() {
     var _a, _b, _c, _d, _e, _f, _g, _h;
-    const key = figma.root.document.name || "untitled";
+    const key = figma.root.name || "untitled";
     try {
       const saved = await figma.clientStorage.getAsync("settings");
       if ((saved == null ? void 0 : saved.channels) && typeof saved.channels === "object") {
